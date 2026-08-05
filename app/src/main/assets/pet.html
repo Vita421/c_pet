@@ -35,7 +35,13 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
                 pet.src = 'rightwalk.gif';
                 break;
             case 'drag':
-                pet.src = 'leftwalk.gif';
+                pet.src = 'la.gif';
+                break;
+            case 'peek_left':
+                pet.src = 'lt.gif';
+                break;
+            case 'peek_right':
+                pet.src = 'rt.gif';
                 break;
         }
     }
@@ -46,9 +52,11 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
             setState(s);
         },
         onTap: function() {
+            // TODO: interaction animation
             setState('idle');
         },
         onDoubleTap: function() {
+            // TODO: special interaction animation
             setState('idle');
         },
         onLongPress: function() {

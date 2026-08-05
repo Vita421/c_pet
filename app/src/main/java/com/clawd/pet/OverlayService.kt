@@ -20,19 +20,29 @@ class OverlayService : Service() {
     private var overlayView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
 
+    // Screen dimensions (pixels)
+    private var screenWidth = 0
+    private var screenHeight = 0
+    private var petSizePx = 0
+
     // Auto-walk
     private val handler = Handler(Looper.getMainLooper())
     private var isWalking = false
     private var walkDirection = 1 // 1=right, -1=left
     private var walkStepsRemaining = 0
 
+    // Peek state
+    private var isPeeking = false
+    private var peekSide = 0 // -1=left, 1=right
+
     companion object {
         private const val CHANNEL_ID = "clawd_overlay_channel"
         private const val NOTIFICATION_ID = 1001
         private const val PET_SIZE_DP = 120
-        private const val PET_HEIGHT_DP = 120
         private const val WALK_STEP_PX = 2
         private const val WALK_INTERVAL_MS = 50L
+        private const val SAFE_MARGIN_DP = 40
+        private const val PEEK_THRESHOLD_DP = 30
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -41,6 +51,13 @@ class OverlayService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+
+        // Get screen dimensions
+        val dm = resources.displayMetrics
+        screenWidth = dm.widthPixels
+        screenHeight = dm.heightPixels
+        petSizePx = dpToPx(PET_SIZE_DP)
+
         setupOverlay()
         scheduleWalk()
     }
@@ -49,16 +66,16 @@ class OverlayService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         params = WindowManager.LayoutParams(
-            dpToPx(PET_SIZE_DP),
-            dpToPx(PET_HEIGHT_DP),
+            petSizePx,
+            petSizePx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 100
-            y = 400
+            x = (screenWidth - petSizePx) / 2
+            y = screenHeight / 3
         }
 
         overlayView = WebView(this).apply {
@@ -77,12 +94,24 @@ class OverlayService : Service() {
         windowManager?.addView(overlayView, params)
     }
 
-    // === AUTO WALK WITH POSITION MOVEMENT ===
+    // === SCREEN BOUNDARY HELPERS ===
+
+    private fun getLeftBoundary(): Int = dpToPx(SAFE_MARGIN_DP)
+    private fun getRightBoundary(): Int = screenWidth - petSizePx - dpToPx(SAFE_MARGIN_DP)
+    private fun getTopBoundary(): Int = 0
+    private fun getBottomBoundary(): Int = screenHeight - petSizePx
+
+    private fun clampY(y: Int): Int {
+        return y.coerceIn(getTopBoundary(), getBottomBoundary())
+    }
+
+    // === AUTO WALK WITH BOUNDARY DETECTION ===
 
     private fun scheduleWalk() {
+        if (isPeeking) return // Don't walk while peeking
         val delay = 3000L + (Math.random() * 4000).toLong()
         handler.postDelayed({
-            if (!isWalking) {
+            if (!isWalking && !isPeeking) {
                 startWalking()
             }
         }, delay)
@@ -92,6 +121,16 @@ class OverlayService : Service() {
         isWalking = true
         // Random direction
         walkDirection = if (Math.random() > 0.5) 1 else -1
+
+        // Check if we'd walk into a wall immediately - if so, go the other way
+        params?.let {
+            if (walkDirection == -1 && it.x <= getLeftBoundary()) {
+                walkDirection = 1
+            } else if (walkDirection == 1 && it.x >= getRightBoundary()) {
+                walkDirection = -1
+            }
+        }
+
         // Random steps (40-80 steps = 2-4 seconds at 50ms interval)
         walkStepsRemaining = 40 + (Math.random() * 40).toInt()
 
@@ -110,13 +149,30 @@ class OverlayService : Service() {
             stopWalking()
             return
         }
+
         walkStepsRemaining--
         params?.let {
-            it.x += walkDirection * WALK_STEP_PX
+            val newX = it.x + walkDirection * WALK_STEP_PX
+
+            // Boundary check: if hitting edge, reverse direction
+            if (newX <= getLeftBoundary()) {
+                walkDirection = 1
+                overlayView?.evaluateJavascript(
+                    "window.petEngine && window.petEngine.setState('walk_right')", null
+                )
+            } else if (newX >= getRightBoundary()) {
+                walkDirection = -1
+                overlayView?.evaluateJavascript(
+                    "window.petEngine && window.petEngine.setState('walk_left')", null
+                )
+            }
+
+            it.x = (it.x + walkDirection * WALK_STEP_PX).coerceIn(getLeftBoundary(), getRightBoundary())
             try {
                 windowManager?.updateViewLayout(overlayView, it)
             } catch (e: Exception) { /* view might be removed */ }
         }
+
         handler.postDelayed({ walkStep() }, WALK_INTERVAL_MS)
     }
 
@@ -125,8 +181,40 @@ class OverlayService : Service() {
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.setState('idle')", null
         )
-        // Schedule next walk
         scheduleWalk()
+    }
+
+    // === PEEK (EDGE CLING) ===
+
+    private fun enterPeek(side: Int) {
+        isPeeking = true
+        peekSide = side
+        isWalking = false
+        handler.removeCallbacksAndMessages(null)
+
+        params?.let {
+            if (side == -1) {
+                // Left peek: shift window left so right half shows
+                it.x = -(petSizePx / 2)
+                overlayView?.evaluateJavascript(
+                    "window.petEngine && window.petEngine.setState('peek_left')", null
+                )
+            } else {
+                // Right peek: shift window right so left half shows
+                it.x = screenWidth - (petSizePx / 2)
+                overlayView?.evaluateJavascript(
+                    "window.petEngine && window.petEngine.setState('peek_right')", null
+                )
+            }
+            try {
+                windowManager?.updateViewLayout(overlayView, it)
+            } catch (e: Exception) {}
+        }
+    }
+
+    private fun exitPeek() {
+        isPeeking = false
+        peekSide = 0
     }
 
     // === GESTURE HANDLING ===
@@ -144,6 +232,11 @@ class OverlayService : Service() {
         return View.OnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    // Fix ghost sliding: kill ALL pending handler callbacks
+                    handler.removeCallbacksAndMessages(null)
+                    isWalking = false
+                    walkStepsRemaining = 0
+
                     initialX = params?.x ?: 0
                     initialY = params?.y ?: 0
                     initialTouchX = event.rawX
@@ -151,21 +244,27 @@ class OverlayService : Service() {
                     touchStartTime = System.currentTimeMillis()
                     hasMoved = false
                     dragNotified = false
-                    // Stop auto-walk if walking
-                    if (isWalking) {
-                        isWalking = false
-                        walkStepsRemaining = 0
-                    }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
+
                     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
                         hasMoved = true
-                        params?.x = initialX + dx
-                        params?.y = initialY + dy
-                        windowManager?.updateViewLayout(overlayView, params)
+
+                        // If was peeking, exit peek on drag
+                        if (isPeeking) {
+                            exitPeek()
+                        }
+
+                        params?.let {
+                            it.x = initialX + dx
+                            // Clamp Y: never go above or below screen
+                            it.y = clampY(initialY + dy)
+                            windowManager?.updateViewLayout(overlayView, it)
+                        }
+
                         // Notify JS only once when drag starts
                         if (!dragNotified) {
                             dragNotified = true
@@ -178,6 +277,7 @@ class OverlayService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     val elapsed = System.currentTimeMillis() - touchStartTime
+
                     if (!hasMoved) {
                         when {
                             elapsed > 600 -> onLongPress()
@@ -201,12 +301,17 @@ class OverlayService : Service() {
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onTap()", null
         )
+        // If was peeking and just tapped (no move), stay peeking
+        if (isPeeking) return
+        scheduleWalk()
     }
 
     private fun onDoubleTap() {
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onDoubleTap()", null
         )
+        if (isPeeking) return
+        scheduleWalk()
     }
 
     private fun onLongPress() {
@@ -216,10 +321,30 @@ class OverlayService : Service() {
     }
 
     private fun onDragEnd() {
+        val peekThreshold = dpToPx(PEEK_THRESHOLD_DP)
+        val currentX = params?.x ?: 0
+
+        // Check if near left or right edge → enter peek
+        if (currentX < peekThreshold) {
+            enterPeek(-1)
+            return
+        } else if (currentX > screenWidth - petSizePx - peekThreshold) {
+            enterPeek(1)
+            return
+        }
+
+        // Not at edge: clamp to safe area and go idle
+        params?.let {
+            it.x = it.x.coerceIn(getLeftBoundary(), getRightBoundary())
+            it.y = clampY(it.y)
+            try {
+                windowManager?.updateViewLayout(overlayView, it)
+            } catch (e: Exception) {}
+        }
+
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onDragEnd()", null
         )
-        // Resume auto-walk after drag
         scheduleWalk()
     }
 
@@ -230,6 +355,7 @@ class OverlayService : Service() {
         val stopPending = PendingIntent.getBroadcast(
             this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE
         )
+
         val openIntent = packageManager.getLaunchIntentForPackage(packageName)
         val openPending = PendingIntent.getActivity(
             this, 0, openIntent, PendingIntent.FLAG_IMMUTABLE
