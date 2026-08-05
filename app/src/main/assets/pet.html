@@ -21,15 +21,12 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
 (function() {
     var pet = document.getElementById('pet');
     var state = 'idle';
-    var walkTimer = null;
-    var idleTimer = null;
 
     function setState(newState) {
         state = newState;
         switch(state) {
             case 'idle':
                 pet.src = 'idle.gif';
-                scheduleWalk();
                 break;
             case 'walk_left':
                 pet.src = 'leftwalk.gif';
@@ -38,29 +35,16 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
                 pet.src = 'rightwalk.gif';
                 break;
             case 'drag':
-                pet.src = 'idle.gif';
-                clearTimeout(walkTimer);
-                clearTimeout(idleTimer);
+                pet.src = 'leftwalk.gif';
                 break;
         }
     }
 
-    function scheduleWalk() {
-        clearTimeout(walkTimer);
-        var delay = 3000 + Math.random() * 4000;
-        walkTimer = setTimeout(function() {
-            if (state !== 'idle') return;
-            var dir = Math.random() > 0.5 ? 'walk_right' : 'walk_left';
-            setState(dir);
-            var walkDuration = 2000 + Math.random() * 2000;
-            idleTimer = setTimeout(function() {
-                setState('idle');
-            }, walkDuration);
-        }, delay);
-    }
-
     // Pet Engine API - called from native Kotlin
     window.petEngine = {
+        setState: function(s) {
+            setState(s);
+        },
         onTap: function() {
             setState('idle');
         },
@@ -78,7 +62,7 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
         }
     };
 
-    // Start
+    // Start in idle - Kotlin handles all state transitions
     setState('idle');
 })();
 </script>

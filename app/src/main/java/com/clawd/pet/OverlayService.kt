@@ -6,6 +6,8 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.view.*
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -18,11 +20,19 @@ class OverlayService : Service() {
     private var overlayView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
 
+    // Auto-walk
+    private val handler = Handler(Looper.getMainLooper())
+    private var isWalking = false
+    private var walkDirection = 1 // 1=right, -1=left
+    private var walkStepsRemaining = 0
+
     companion object {
         private const val CHANNEL_ID = "clawd_overlay_channel"
         private const val NOTIFICATION_ID = 1001
         private const val PET_SIZE_DP = 120
         private const val PET_HEIGHT_DP = 120
+        private const val WALK_STEP_PX = 2
+        private const val WALK_INTERVAL_MS = 50L
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -32,6 +42,7 @@ class OverlayService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         setupOverlay()
+        scheduleWalk()
     }
 
     private fun setupOverlay() {
@@ -66,6 +77,58 @@ class OverlayService : Service() {
         windowManager?.addView(overlayView, params)
     }
 
+    // === AUTO WALK WITH POSITION MOVEMENT ===
+
+    private fun scheduleWalk() {
+        val delay = 3000L + (Math.random() * 4000).toLong()
+        handler.postDelayed({
+            if (!isWalking) {
+                startWalking()
+            }
+        }, delay)
+    }
+
+    private fun startWalking() {
+        isWalking = true
+        // Random direction
+        walkDirection = if (Math.random() > 0.5) 1 else -1
+        // Random steps (40-80 steps = 2-4 seconds at 50ms interval)
+        walkStepsRemaining = 40 + (Math.random() * 40).toInt()
+
+        // Tell JS to show walk animation
+        val dir = if (walkDirection == 1) "walk_right" else "walk_left"
+        overlayView?.evaluateJavascript(
+            "window.petEngine && window.petEngine.setState('$dir')", null
+        )
+
+        // Start stepping
+        walkStep()
+    }
+
+    private fun walkStep() {
+        if (walkStepsRemaining <= 0 || !isWalking) {
+            stopWalking()
+            return
+        }
+        walkStepsRemaining--
+        params?.let {
+            it.x += walkDirection * WALK_STEP_PX
+            try {
+                windowManager?.updateViewLayout(overlayView, it)
+            } catch (e: Exception) { /* view might be removed */ }
+        }
+        handler.postDelayed({ walkStep() }, WALK_INTERVAL_MS)
+    }
+
+    private fun stopWalking() {
+        isWalking = false
+        overlayView?.evaluateJavascript(
+            "window.petEngine && window.petEngine.setState('idle')", null
+        )
+        // Schedule next walk
+        scheduleWalk()
+    }
+
     // === GESTURE HANDLING ===
 
     private var initialX = 0
@@ -75,6 +138,7 @@ class OverlayService : Service() {
     private var lastTapTime = 0L
     private var touchStartTime = 0L
     private var hasMoved = false
+    private var dragNotified = false
 
     private fun createTouchListener(): View.OnTouchListener {
         return View.OnTouchListener { _, event ->
@@ -86,9 +150,12 @@ class OverlayService : Service() {
                     initialTouchY = event.rawY
                     touchStartTime = System.currentTimeMillis()
                     hasMoved = false
-                    overlayView?.evaluateJavascript(
-                        "window.petEngine && window.petEngine.onDragStart()", null
-                    )
+                    dragNotified = false
+                    // Stop auto-walk if walking
+                    if (isWalking) {
+                        isWalking = false
+                        walkStepsRemaining = 0
+                    }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -99,6 +166,13 @@ class OverlayService : Service() {
                         params?.x = initialX + dx
                         params?.y = initialY + dy
                         windowManager?.updateViewLayout(overlayView, params)
+                        // Notify JS only once when drag starts
+                        if (!dragNotified) {
+                            dragNotified = true
+                            overlayView?.evaluateJavascript(
+                                "window.petEngine && window.petEngine.onDragStart()", null
+                            )
+                        }
                     }
                     true
                 }
@@ -145,6 +219,8 @@ class OverlayService : Service() {
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onDragEnd()", null
         )
+        // Resume auto-walk after drag
+        scheduleWalk()
     }
 
     // === NOTIFICATION with stop action ===
@@ -189,6 +265,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         overlayView?.let {
             windowManager?.removeView(it)
             it.destroy()
