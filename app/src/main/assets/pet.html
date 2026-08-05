@@ -22,26 +22,45 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
     var pet = document.getElementById('pet');
     var state = 'idle';
 
+    function resetPosition() {
+        pet.style.left = '50%';
+        pet.style.right = 'auto';
+        pet.style.top = '50%';
+        pet.style.transform = 'translate(-50%, -50%)';
+    }
+
     function setState(newState) {
         state = newState;
         switch(state) {
             case 'idle':
                 pet.src = 'idle.gif';
+                resetPosition();
                 break;
             case 'walk_left':
                 pet.src = 'leftwalk.gif';
+                resetPosition();
                 break;
             case 'walk_right':
                 pet.src = 'rightwalk.gif';
+                resetPosition();
                 break;
             case 'drag':
                 pet.src = 'la.gif';
+                resetPosition();
                 break;
             case 'peek_left':
                 pet.src = 'lt.gif';
+                pet.style.left = '0';
+                pet.style.right = 'auto';
+                pet.style.top = '50%';
+                pet.style.transform = 'translate(0, -50%)';
                 break;
             case 'peek_right':
                 pet.src = 'rt.gif';
+                pet.style.left = 'auto';
+                pet.style.right = '0';
+                pet.style.top = '50%';
+                pet.style.transform = 'translate(0, -50%)';
                 break;
         }
     }
@@ -52,11 +71,9 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
             setState(s);
         },
         onTap: function() {
-            // TODO: interaction animation
             setState('idle');
         },
         onDoubleTap: function() {
-            // TODO: special interaction animation
             setState('idle');
         },
         onLongPress: function() {
@@ -70,7 +87,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
         }
     };
 
-    // Start in idle - Kotlin handles all state transitions
     setState('idle');
 })();
 </script>

@@ -41,8 +41,10 @@ class OverlayService : Service() {
         private const val PET_SIZE_DP = 120
         private const val WALK_STEP_PX = 2
         private const val WALK_INTERVAL_MS = 50L
-        private const val SAFE_MARGIN_DP = 40
-        private const val PEEK_THRESHOLD_DP = 30
+        // gif is 64px centered in 120dp window → 28dp padding each side
+        private const val GIF_PADDING_DP = 28
+        // gif edge must be within 5dp of screen edge to trigger peek
+        private const val PEEK_TRIGGER_DP = 5
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -95,11 +97,12 @@ class OverlayService : Service() {
     }
 
     // === SCREEN BOUNDARY HELPERS ===
+    // Boundaries are calculated so gif edge touches screen edge, not window edge
 
-    private fun getLeftBoundary(): Int = dpToPx(SAFE_MARGIN_DP)
-    private fun getRightBoundary(): Int = screenWidth - petSizePx - dpToPx(SAFE_MARGIN_DP)
-    private fun getTopBoundary(): Int = 0
-    private fun getBottomBoundary(): Int = screenHeight - petSizePx
+    private fun getLeftBoundary(): Int = -dpToPx(GIF_PADDING_DP)
+    private fun getRightBoundary(): Int = screenWidth - petSizePx + dpToPx(GIF_PADDING_DP)
+    private fun getTopBoundary(): Int = -dpToPx(GIF_PADDING_DP)
+    private fun getBottomBoundary(): Int = screenHeight - petSizePx + dpToPx(GIF_PADDING_DP)
 
     private fun clampY(y: Int): Int {
         return y.coerceIn(getTopBoundary(), getBottomBoundary())
@@ -194,14 +197,14 @@ class OverlayService : Service() {
 
         params?.let {
             if (side == -1) {
-                // Left peek: shift window left so right half shows
-                it.x = -(petSizePx / 2)
+                // Left peek: window flush to left edge, sprite drawn at left of canvas
+                it.x = 0
                 overlayView?.evaluateJavascript(
                     "window.petEngine && window.petEngine.setState('peek_left')", null
                 )
             } else {
-                // Right peek: shift window right so left half shows
-                it.x = screenWidth - (petSizePx / 2)
+                // Right peek: window flush to right edge, sprite drawn at right of canvas
+                it.x = screenWidth - petSizePx
                 overlayView?.evaluateJavascript(
                     "window.petEngine && window.petEngine.setState('peek_right')", null
                 )
@@ -321,14 +324,20 @@ class OverlayService : Service() {
     }
 
     private fun onDragEnd() {
-        val peekThreshold = dpToPx(PEEK_THRESHOLD_DP)
         val currentX = params?.x ?: 0
+        val gifPaddingPx = dpToPx(GIF_PADDING_DP)
+        val peekTriggerPx = dpToPx(PEEK_TRIGGER_DP)
 
-        // Check if near left or right edge → enter peek
-        if (currentX < peekThreshold) {
+        // gif left edge = currentX + gifPaddingPx
+        // gif right edge = currentX + petSizePx - gifPaddingPx
+        val gifLeftEdge = currentX + gifPaddingPx
+        val gifRightEdge = currentX + petSizePx - gifPaddingPx
+
+        // Peek triggers when gif edge is within 5dp of screen edge
+        if (gifLeftEdge < peekTriggerPx) {
             enterPeek(-1)
             return
-        } else if (currentX > screenWidth - petSizePx - peekThreshold) {
+        } else if (screenWidth - gifRightEdge < peekTriggerPx) {
             enterPeek(1)
             return
         }
