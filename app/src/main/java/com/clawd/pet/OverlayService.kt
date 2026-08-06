@@ -21,6 +21,10 @@ import android.webkit.WebViewClient
 import android.webkit.WebSettings
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONArray
+import java.util.Calendar
 
 class OverlayService : Service(), SensorEventListener {
     private var windowManager: WindowManager? = null
@@ -103,12 +107,17 @@ class OverlayService : Service(), SensorEventListener {
         private const val BOUNCE_UPDATE_MS = 16L
 
         // Shake detection for bounce trigger
-        private const val SHAKE_THRESHOLD = 14f
-        private const val SHAKE_ACCUM_NEEDED = 4
+        private const val SHAKE_THRESHOLD = 12f
+        private const val SHAKE_ACCUM_NEEDED = 3
         private const val SHAKE_ACCUM_WINDOW_MS = 3000L
-        private const val SHAKE_DEBOUNCE_MS = 300L
+        private const val SHAKE_DEBOUNCE_MS = 250L
 
         const val ACTION_RELOAD_DECKS = "com.clawd.pet.RELOAD_DECKS"
+
+        // Supabase whisper
+        private const val SUPABASE_URL = "https://oonkoosthtghkctzqutu.supabase.co"
+        private const val SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vbmtvb3N0aHRnaGtjdHpxdXR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MTI1MTYsImV4cCI6MjEwMTQ4ODUxNn0.cH5I-_m0fJ1xba7VD_0q4sSWbJgJtcZ4d5FSKr4uSNk"
+        private const val WHISPER_INTERVAL_MS = 1800_000L // 30 minutes
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -132,6 +141,7 @@ class OverlayService : Service(), SensorEventListener {
         setupOverlay()
         registerSensor()
         scheduleWalk()
+        startWhisperRotation()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -304,8 +314,11 @@ class OverlayService : Service(), SensorEventListener {
 
         // --- Continuous force while bouncing ---
         if (isBouncing) {
-            bounceVx += -ax * BOUNCE_ACCEL_SCALE
-            bounceVy += ay * BOUNCE_ACCEL_SCALE
+            // Dead zone: ignore small noise to prevent drifting
+            val effectiveAx = if (Math.abs(ax) > 1.5f) ax else 0f
+            val effectiveAy = if (Math.abs(ay) > 1.5f) ay else 0f
+            bounceVx += -effectiveAx * BOUNCE_ACCEL_SCALE
+            bounceVy += effectiveAy * BOUNCE_ACCEL_SCALE
         }
     }
 
@@ -602,6 +615,99 @@ class OverlayService : Service(), SensorEventListener {
                 .apply { setShowBadge(false) }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
+    }
+
+    // === WHISPER SYSTEM ===
+
+    private fun startWhisperRotation() {
+        handler.postDelayed(object : Runnable {
+            override fun run() {
+                fetchAndShowWhisper()
+                handler.postDelayed(this, WHISPER_INTERVAL_MS)
+            }
+        }, 5000L) // first whisper 5s after start
+    }
+
+    private fun fetchAndShowWhisper() {
+        Thread {
+            try {
+                val condition = getCurrentCondition()
+                val urlStr = "$SUPABASE_URL/rest/v1/whispers?used=eq.false&or=(condition.eq.always,condition.eq.$condition)&order=created_at.asc&limit=1"
+                val url = URL(urlStr)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", SUPABASE_KEY)
+                conn.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+
+                if (conn.responseCode == 200) {
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val arr = JSONArray(body)
+                    if (arr.length() > 0) {
+                        val obj = arr.getJSONObject(0)
+                        val text = obj.getString("text")
+                        val id = obj.getLong("id")
+
+                        // Update notification on main thread
+                        handler.post { updateNotificationWhisper(text) }
+
+                        // Mark as used
+                        markWhisperUsed(id)
+                    }
+                }
+                conn.disconnect()
+            } catch (e: Exception) {
+                // Silent fail - network might be unavailable
+            }
+        }.start()
+    }
+
+    private fun markWhisperUsed(id: Long) {
+        try {
+            val urlStr = "$SUPABASE_URL/rest/v1/whispers?id=eq.$id"
+            val url = URL(urlStr)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "PATCH"
+            conn.setRequestProperty("apikey", SUPABASE_KEY)
+            conn.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Prefer", "return=minimal")
+            conn.doOutput = true
+            conn.outputStream.use { it.write("{\"used\":true}".toByteArray()) }
+            conn.responseCode
+            conn.disconnect()
+        } catch (e: Exception) {}
+    }
+
+    private fun getCurrentCondition(): String {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return when {
+            hour in 0..5 -> "time:late_night"
+            hour in 6..9 -> "time:morning"
+            hour in 11..13 -> "time:noon"
+            hour in 14..17 -> "time:afternoon"
+            hour in 22..23 -> "time:late_night"
+            else -> "always"
+        }
+    }
+
+    private fun updateNotificationWhisper(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        val stopIntent = Intent(this, StopReceiver::class.java)
+        val stopPending = PendingIntent.getBroadcast(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
+        val openIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val openPending = PendingIntent.getActivity(this, 0, openIntent, PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("\uD83E\uDD80 Clawd")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setContentIntent(openPending)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "关闭", stopPending)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+        nm.notify(NOTIFICATION_ID, notification)
     }
 
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
