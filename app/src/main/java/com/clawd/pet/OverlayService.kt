@@ -47,14 +47,15 @@ class OverlayService : Service(), SensorEventListener {
 
     // Sensor
     private var sensorManager: SensorManager? = null
-    private var accelerometer: Sensor? = null
+    private var linearAccel: Sensor? = null
 
     // Drag state
     private var isDragging = false
+    private var isHanging = false // clothesline mode
 
     // Fortune: finger direction reversal detection
     private var lastDragX = 0f
-    private var lastDragDirection = 0 // -1 left, 1 right, 0 unknown
+    private var lastDragDirection = 0
     private var directionChangeCount = 0
     private var firstDirectionChangeTime = 0L
     private var fortuneTriggered = false
@@ -63,8 +64,12 @@ class OverlayService : Service(), SensorEventListener {
     private var isBouncing = false
     private var bounceVelocityX = 0f
     private var bounceVelocityY = 0f
-    private var isBouncePaused = false // wall hit idle pause
+    private var isBouncePaused = false
     private var sensorRegistered = false
+
+    // Shake accumulation for bounce trigger
+    private var shakeAccumCount = 0
+    private var shakeAccumStart = 0L
 
     // Deck
     private lateinit var deckManager: DeckManager
@@ -85,19 +90,23 @@ class OverlayService : Service(), SensorEventListener {
         private const val WALK_OVERFLOW_DP = 10
         private const val PEEK_BODY_OUT_DP = 16
 
-        // Fortune trigger: finger direction changes
+        // Fortune trigger
         private const val FORTUNE_DIRECTION_CHANGES = 4
         private const val FORTUNE_WINDOW_MS = 1500L
         private const val FORTUNE_DELAY_MS = 1000L
 
         // Physics bounce
-        private const val BOUNCE_ACCEL_SCALE = 3.0f
-        private const val BOUNCE_FRICTION = 0.985f
+        private const val BOUNCE_FRICTION = 0.97f
         private const val BOUNCE_RESTITUTION = 0.7f
-        private const val BOUNCE_STOP_SPEED = 1.5f
+        private const val BOUNCE_STOP_SPEED = 2.0f
         private const val BOUNCE_UPDATE_MS = 16L
         private const val BOUNCE_WALL_IDLE_MS = 1000L
-        private const val BOUNCE_TRIGGER_THRESHOLD = 18f
+
+        // Shake detection for bounce
+        private const val SHAKE_THRESHOLD = 12f
+        private const val SHAKE_ACCUM_NEEDED = 5
+        private const val SHAKE_ACCUM_WINDOW_MS = 2000L
+        private const val BOUNCE_INITIAL_SCALE = 8.0f
 
         const val ACTION_RELOAD_DECKS = "com.clawd.pet.RELOAD_DECKS"
     }
@@ -118,7 +127,7 @@ class OverlayService : Service(), SensorEventListener {
         decks = deckManager.loadDecks()
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        linearAccel = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
 
         setupOverlay()
         registerSensor()
@@ -136,7 +145,7 @@ class OverlayService : Service(), SensorEventListener {
 
     private fun registerSensor() {
         if (!sensorRegistered) {
-            accelerometer?.let {
+            linearAccel?.let {
                 sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
                 sensorRegistered = true
             }
@@ -199,7 +208,7 @@ class OverlayService : Service(), SensorEventListener {
         if (isPeeking || isBouncing) return
         val delay = 3000L + (Math.random() * 4000).toLong()
         handler.postDelayed({
-            if (!isWalking && !isPeeking && !isDragging && !isBouncing) {
+            if (!isWalking && !isPeeking && !isDragging && !isBouncing && !isHanging) {
                 startWalking()
             }
         }, delay)
@@ -209,11 +218,8 @@ class OverlayService : Service(), SensorEventListener {
         isWalking = true
         walkDirection = if (Math.random() > 0.5) 1 else -1
         params?.let {
-            if (walkDirection == -1 && it.x <= getLeftBoundary()) {
-                walkDirection = 1
-            } else if (walkDirection == 1 && it.x >= getRightBoundary()) {
-                walkDirection = -1
-            }
+            if (walkDirection == -1 && it.x <= getLeftBoundary()) walkDirection = 1
+            else if (walkDirection == 1 && it.x >= getRightBoundary()) walkDirection = -1
         }
         walkStepsRemaining = 40 + (Math.random() * 40).toInt()
         val dir = if (walkDirection == 1) "walk_right" else "walk_left"
@@ -285,26 +291,46 @@ class OverlayService : Service(), SensorEventListener {
         peekSide = 0
     }
 
-    // === PHYSICS BOUNCE ===
+    // === PHYSICS BOUNCE (LINEAR_ACCELERATION, no gravity) ===
+
+    private var lastSensorX = 0f
+    private var lastSensorY = 0f
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type != Sensor.TYPE_ACCELEROMETER) return
+        if (event?.sensor?.type != Sensor.TYPE_LINEAR_ACCELERATION) return
 
-        val ax = event.values[0]
-        val ay = event.values[1]
+        val ax = event.values[0] // left/right
+        val ay = event.values[1] // up/down
 
-        // Only trigger bounce when NOT dragging, NOT peeking
-        if (isDragging || isPeeking) return
+        lastSensorX = ax
+        lastSensorY = ay
 
-        val accelMag = Math.sqrt((ax * ax + ay * ay).toDouble()).toFloat()
+        // Don't trigger bounce if dragging, peeking, or hanging
+        if (isDragging || isPeeking || isHanging) return
 
-        if (!isBouncing && accelMag > BOUNCE_TRIGGER_THRESHOLD) {
-            // Enter bounce mode
-            enterBounceMode(-ax * BOUNCE_ACCEL_SCALE, ay * BOUNCE_ACCEL_SCALE)
-        } else if (isBouncing && !isBouncePaused) {
-            // Continuously add acceleration force while bouncing
-            bounceVelocityX += -ax * 0.5f
-            bounceVelocityY += ay * 0.5f
+        val mag = Math.sqrt((ax * ax + ay * ay).toDouble()).toFloat()
+
+        if (mag > SHAKE_THRESHOLD) {
+            val now = System.currentTimeMillis()
+            if (shakeAccumCount == 0 || now - shakeAccumStart > SHAKE_ACCUM_WINDOW_MS) {
+                // Start new accumulation window
+                shakeAccumCount = 1
+                shakeAccumStart = now
+            } else {
+                shakeAccumCount++
+            }
+
+            if (shakeAccumCount >= SHAKE_ACCUM_NEEDED && !isBouncing) {
+                // Trigger bounce with initial velocity based on last strong shake direction
+                shakeAccumCount = 0
+                enterBounceMode(-ax * BOUNCE_INITIAL_SCALE, ay * BOUNCE_INITIAL_SCALE)
+            }
+        }
+
+        // If already bouncing and user shakes again, add impulse
+        if (isBouncing && !isBouncePaused && mag > SHAKE_THRESHOLD) {
+            bounceVelocityX += -ax * 2.0f
+            bounceVelocityY += ay * 2.0f
         }
     }
 
@@ -321,7 +347,6 @@ class OverlayService : Service(), SensorEventListener {
         bounceVelocityX = initialVx
         bounceVelocityY = initialVy
 
-        // Set initial animation direction
         updateBounceAnimation()
         scheduleBounceStep()
     }
@@ -333,13 +358,14 @@ class OverlayService : Service(), SensorEventListener {
     private fun bounceStep() {
         if (!isBouncing || isBouncePaused) return
 
-        // Apply friction
+        // Apply friction only (no external force accumulation)
         bounceVelocityX *= BOUNCE_FRICTION
         bounceVelocityY *= BOUNCE_FRICTION
 
-        val speed = Math.sqrt((bounceVelocityX * bounceVelocityX + bounceVelocityY * bounceVelocityY).toDouble()).toFloat()
+        val speed = Math.sqrt(
+            (bounceVelocityX * bounceVelocityX + bounceVelocityY * bounceVelocityY).toDouble()
+        ).toFloat()
 
-        // Stop if speed too low
         if (speed < BOUNCE_STOP_SPEED) {
             exitBounceMode()
             return
@@ -348,10 +374,9 @@ class OverlayService : Service(), SensorEventListener {
         params?.let {
             val newX = it.x + bounceVelocityX.toInt()
             val newY = it.y + bounceVelocityY.toInt()
-
             var hitWall = false
 
-            // Check X boundaries
+            // X boundaries
             if (newX <= getLeftBoundary()) {
                 bounceVelocityX = Math.abs(bounceVelocityX) * BOUNCE_RESTITUTION
                 it.x = getLeftBoundary()
@@ -364,7 +389,7 @@ class OverlayService : Service(), SensorEventListener {
                 it.x = newX
             }
 
-            // Check Y boundaries
+            // Y boundaries
             if (newY <= getTopBoundary()) {
                 bounceVelocityY = Math.abs(bounceVelocityY) * BOUNCE_RESTITUTION
                 it.y = getTopBoundary()
@@ -380,7 +405,6 @@ class OverlayService : Service(), SensorEventListener {
             try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
 
             if (hitWall) {
-                // Pause at wall: show idle for 1 second, then continue
                 isBouncePaused = true
                 overlayView?.evaluateJavascript(
                     "window.petEngine && window.petEngine.setState('idle')", null
@@ -388,13 +412,19 @@ class OverlayService : Service(), SensorEventListener {
                 handler.postDelayed({
                     isBouncePaused = false
                     if (isBouncing) {
-                        updateBounceAnimation()
-                        scheduleBounceStep()
+                        val stillMoving = Math.sqrt(
+                            (bounceVelocityX * bounceVelocityX + bounceVelocityY * bounceVelocityY).toDouble()
+                        ).toFloat()
+                        if (stillMoving < BOUNCE_STOP_SPEED) {
+                            exitBounceMode()
+                        } else {
+                            updateBounceAnimation()
+                            scheduleBounceStep()
+                        }
                     }
                 }, BOUNCE_WALL_IDLE_MS)
                 return
             } else {
-                // Update direction animation
                 updateBounceAnimation()
             }
         }
@@ -441,30 +471,22 @@ class OverlayService : Service(), SensorEventListener {
         val dx = currentX - lastDragX
         lastDragX = currentX
 
-        // Need meaningful movement
         if (Math.abs(dx) < 3f) return
 
         val currentDirection = if (dx > 0) 1 else -1
 
         if (lastDragDirection != 0 && currentDirection != lastDragDirection) {
-            // Direction reversed
             val now = System.currentTimeMillis()
-
             if (directionChangeCount == 0) {
                 firstDirectionChangeTime = now
             }
-
-            // Check if within time window
             if (now - firstDirectionChangeTime > FORTUNE_WINDOW_MS) {
-                // Reset, window expired
                 directionChangeCount = 1
                 firstDirectionChangeTime = now
             } else {
                 directionChangeCount++
             }
-
             if (directionChangeCount >= FORTUNE_DIRECTION_CHANGES) {
-                // Triggered!
                 fortuneTriggered = true
                 onFortuneTriggered()
             }
@@ -474,7 +496,6 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onFortuneTriggered() {
-        // Wait 1 second (animation placeholder), then show fortune
         handler.postDelayed({
             isDragging = false
             val card = deckManager.drawCard(decks)
@@ -570,9 +591,9 @@ class OverlayService : Service(), SensorEventListener {
 
                     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
                         hasMoved = true
-                        if (isPeeking) {
-                            exitPeek()
-                        }
+                        if (isHanging) isHanging = false
+                        if (isPeeking) exitPeek()
+
                         params?.let {
                             it.x = initialX + dx
                             it.y = clampY(initialY + dy)
@@ -585,7 +606,6 @@ class OverlayService : Service(), SensorEventListener {
                                 "window.petEngine && window.petEngine.onDragStart()", null
                             )
                         }
-                        // Detect finger direction reversal for fortune
                         detectDirectionReversal(event.rawX)
                     }
                     true
@@ -611,7 +631,6 @@ class OverlayService : Service(), SensorEventListener {
                         if (!fortuneTriggered) {
                             onDragEnd()
                         } else {
-                            // Fortune was triggered during drag, just reset position
                             scheduleWalk()
                         }
                     }
@@ -623,6 +642,15 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onTap() {
+        // Tap while hanging = release
+        if (isHanging) {
+            isHanging = false
+            overlayView?.evaluateJavascript(
+                "window.petEngine && window.petEngine.setState('idle')", null
+            )
+            scheduleWalk()
+            return
+        }
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onTap()", null
         )
@@ -631,6 +659,14 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onDoubleTap() {
+        if (isHanging) {
+            isHanging = false
+            overlayView?.evaluateJavascript(
+                "window.petEngine && window.petEngine.setState('idle')", null
+            )
+            scheduleWalk()
+            return
+        }
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onDoubleTap()", null
         )
@@ -639,8 +675,8 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onLongPress() {
-        // Only play drag animation (clothesline feature)
-        // Do NOT start any detection
+        // Clothesline mode: hang and swing
+        isHanging = true
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onLongPress()", null
         )
@@ -663,7 +699,6 @@ class OverlayService : Service(), SensorEventListener {
             return
         }
 
-        // Clamp to boundaries
         params?.let {
             it.x = clampX(it.x)
             it.y = clampY(it.y)

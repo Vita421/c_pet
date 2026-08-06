@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
-import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -26,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private var decks: MutableList<Deck> = mutableListOf()
     private var isRunning = false
     private var importTargetDeck: Deck? = null
+    private var currentEditDialog: AlertDialog? = null
 
     companion object {
         private const val OVERLAY_PERMISSION_CODE = 1001
@@ -211,6 +211,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEditDeckDialog(deck: Deck) {
+        // Dismiss any existing edit dialog first
+        currentEditDialog?.dismiss()
+        currentEditDialog = null
+
         val container = ScrollView(this).apply {
             setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(8))
         }
@@ -219,7 +223,7 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(innerLayout)
 
-        // Cards list with delete buttons
+        // Cards list - long press to delete
         if (deck.cards.isEmpty()) {
             val emptyText = TextView(this).apply {
                 text = "（空牌组）"
@@ -230,35 +234,43 @@ class MainActivity : AppCompatActivity() {
             innerLayout.addView(emptyText)
         } else {
             for (i in deck.cards.indices) {
-                val cardRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dpToPx(2), 0, dpToPx(2))
-                }
                 val cardText = TextView(this).apply {
                     text = "• ${deck.cards[i]}"
                     setTextColor(0xFFe0e0e0.toInt())
                     textSize = 14f
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                }
-                val deleteBtn = TextView(this).apply {
-                    text = "×"
-                    setTextColor(0xFFff5252.toInt())
-                    textSize = 18f
-                    setPadding(dpToPx(12), 0, dpToPx(4), 0)
-                    setOnClickListener {
-                        deck.cards.removeAt(i)
-                        deckManager.saveDecks(decks)
-                        refreshDecks()
-                        notifyServiceReload()
-                        // Refresh the dialog
-                        showEditDeckDialog(deck)
+                    setPadding(0, dpToPx(4), 0, dpToPx(4))
+                    // Long press to delete with confirmation
+                    setOnLongClickListener {
+                        val cardContent = deck.cards[i]
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("删除签文")
+                            .setMessage("确定删除「$cardContent」？")
+                            .setPositiveButton("删除") { _, _ ->
+                                deck.cards.removeAt(i)
+                                deckManager.saveDecks(decks)
+                                refreshDecks()
+                                notifyServiceReload()
+                                // Dismiss and reopen
+                                currentEditDialog?.dismiss()
+                                currentEditDialog = null
+                                showEditDeckDialog(deck)
+                            }
+                            .setNegativeButton("取消", null)
+                            .show()
+                        true
                     }
                 }
-                cardRow.addView(cardText)
-                cardRow.addView(deleteBtn)
-                innerLayout.addView(cardRow)
+                innerLayout.addView(cardText)
             }
+
+            // Hint about long press
+            val deleteHint = TextView(this).apply {
+                text = "长按签文可删除"
+                setTextColor(0xFF505050.toInt())
+                textSize = 11f
+                setPadding(0, dpToPx(4), 0, dpToPx(8))
+            }
+            innerLayout.addView(deleteHint)
         }
 
         // Add card input
@@ -292,14 +304,21 @@ class MainActivity : AppCompatActivity() {
                 } else if (text.length > 20) {
                     Toast.makeText(this, "签文不能超过20字", Toast.LENGTH_SHORT).show()
                 }
+                currentEditDialog = null
             }
-            .setNegativeButton("关闭", null)
+            .setNegativeButton("关闭") { _, _ ->
+                currentEditDialog = null
+            }
             .setNeutralButton("更多…", null)
+            .setOnDismissListener {
+                currentEditDialog = null
+            }
             .create()
 
         dialog.show()
+        currentEditDialog = dialog
 
-        // Override neutral button to show submenu
+        // Override neutral button
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
             showMoreOptionsDialog(deck, dialog)
         }
