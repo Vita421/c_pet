@@ -21,7 +21,6 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
 (function() {
     var pet = document.getElementById('pet');
     var state = 'idle';
-
     function resetPosition() {
         pet.style.bottom = '0';
         pet.style.top = 'auto';
@@ -29,66 +28,47 @@ html, body { width:100%; height:100%; overflow:hidden; background:transparent; }
         pet.style.right = 'auto';
         pet.style.transform = 'translateX(-50%)';
     }
-
     function setState(newState) {
         state = newState;
         switch(state) {
             case 'idle':
-                pet.src = 'idle.gif';
-                resetPosition();
-                break;
+                pet.src = 'idle.gif'; resetPosition(); break;
+            case 'idle_low':
+                pet.src = 'idle_low.gif'; resetPosition(); break;
+            case 'charging':
+                pet.src = 'charging.gif'; resetPosition(); break;
+            case 'low_alert':
+                pet.src = 'low_alert.gif'; resetPosition(); break;
             case 'walk_left':
-                pet.src = 'leftwalk.gif';
-                resetPosition();
-                break;
+                pet.src = 'leftwalk.gif'; resetPosition(); break;
             case 'walk_right':
-                pet.src = 'rightwalk.gif';
-                resetPosition();
-                break;
+                pet.src = 'rightwalk.gif'; resetPosition(); break;
+            case 'walk_low_left':
+                pet.src = 'walk_low_left.gif'; resetPosition(); break;
+            case 'walk_low_right':
+                pet.src = 'walk_low_right.gif'; resetPosition(); break;
             case 'drag':
-                pet.src = 'la.gif';
-                resetPosition();
-                break;
+                pet.src = 'la.gif'; resetPosition(); break;
             case 'peek_left':
-                pet.src = 'lt.gif';
-                pet.style.bottom = '0';
-                pet.style.top = 'auto';
-                pet.style.left = '0';
-                pet.style.right = 'auto';
-                pet.style.transform = 'none';
-                break;
+                pet.src = 'lt_new.gif';
+                pet.style.bottom = '0'; pet.style.top = 'auto';
+                pet.style.left = '0'; pet.style.right = 'auto';
+                pet.style.transform = 'none'; break;
             case 'peek_right':
-                pet.src = 'rt.gif';
-                pet.style.bottom = '0';
-                pet.style.top = 'auto';
-                pet.style.left = 'auto';
-                pet.style.right = '0';
-                pet.style.transform = 'none';
-                break;
+                pet.src = 'rt_new.gif';
+                pet.style.bottom = '0'; pet.style.top = 'auto';
+                pet.style.left = 'auto'; pet.style.right = '0';
+                pet.style.transform = 'none'; break;
         }
     }
-
     window.petEngine = {
-        setState: function(s) {
-            setState(s);
-        },
-        onTap: function() {
-            setState('idle');
-        },
-        onDoubleTap: function() {
-            setState('idle');
-        },
-        onLongPress: function() {
-            setState('drag');
-        },
-        onDragStart: function() {
-            setState('drag');
-        },
-        onDragEnd: function() {
-            setState('idle');
-        }
+        setState: function(s) { setState(s); },
+        onTap: function() { setState('idle'); },
+        onDoubleTap: function() { setState('idle'); },
+        onLongPress: function() { setState('drag'); },
+        onDragStart: function() { setState('drag'); },
+        onDragEnd: function() { setState('idle'); }
     };
-
     setState('idle');
 })();
 </script>

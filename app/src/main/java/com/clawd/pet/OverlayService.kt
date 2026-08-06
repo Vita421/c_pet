@@ -1,8 +1,6 @@
 package com.clawd.pet
-
 import android.app.*
-import android.content.Context
-import android.content.Intent
+import android.content.*
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -10,10 +8,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
-import android.os.IBinder
-import android.os.Handler
-import android.os.Looper
+import android.os.*
 import android.util.TypedValue
 import android.view.*
 import android.webkit.WebView
@@ -30,94 +25,86 @@ class OverlayService : Service(), SensorEventListener {
     private var windowManager: WindowManager? = null
     private var overlayView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
-
     private var fortuneView: View? = null
     private var fortuneParams: WindowManager.LayoutParams? = null
-
+    private var whisperView: View? = null
+    private var whisperParams: WindowManager.LayoutParams? = null
     private var screenWidth = 0
     private var screenHeight = 0
     private var petSizePx = 0
 
     private val handler = Handler(Looper.getMainLooper())
-
+    private val whisperHandler = Handler(Looper.getMainLooper())
     // Walk state
     private var isWalking = false
     private var walkDirection = 1
     private var walkStepsRemaining = 0
-
     // Peek state
     private var isPeeking = false
     private var peekSide = 0
-
     // Sensor
     private var sensorManager: SensorManager? = null
     private var linearAccel: Sensor? = null
-
     // Drag state
     private var isDragging = false
     private var isHanging = false
-
     // Fortune: finger direction reversal detection
     private var lastDragX = 0f
     private var lastDragDirection = 0
     private var directionChangeCount = 0
     private var firstDirectionChangeTime = 0L
     private var fortuneTriggered = false
-
     // Physics bounce state
     private var isBouncing = false
     private var bounceVx = 0f
     private var bounceVy = 0f
     private var sensorRegistered = false
-
     // Shake accumulation for bounce trigger
     private var shakeAccumCount = 0
     private var shakeAccumStart = 0L
     private var lastShakeAccumTime = 0L
-
     // Deck
     private lateinit var deckManager: DeckManager
     private var decks: MutableList<Deck> = mutableListOf()
+    // Battery state
+    private var isLowBattery = false
+    private var isCharging = false
+    private var batteryReceiver: BroadcastReceiver? = null
 
     companion object {
         private const val CHANNEL_ID = "clawd_overlay_channel"
         private const val NOTIFICATION_ID = 1001
-
         private const val PET_SIZE_DP = 80
         private const val GIF_PAD_LEFT_DP = 8
         private const val GIF_PAD_RIGHT_DP = 8
         private const val GIF_PAD_TOP_DP = 16
         private const val GIF_PAD_BOTTOM_DP = 0
-
         private const val WALK_STEP_PX = 2
         private const val WALK_INTERVAL_MS = 50L
         private const val WALK_OVERFLOW_DP = 10
         private const val PEEK_BODY_OUT_DP = 16
-
         // Fortune trigger
         private const val FORTUNE_DIRECTION_CHANGES = 4
         private const val FORTUNE_WINDOW_MS = 1500L
         private const val FORTUNE_DELAY_MS = 1000L
-
         // Physics bounce (modeled after AccelerometerBallBounce)
         private const val BOUNCE_DAMPING = 0.98f
         private const val BOUNCE_WALL_FACTOR = 0.6f
         private const val BOUNCE_ACCEL_SCALE = 1.5f
         private const val BOUNCE_STOP_SPEED = 1.5f
         private const val BOUNCE_UPDATE_MS = 16L
-
         // Shake detection for bounce trigger
         private const val SHAKE_THRESHOLD = 12f
         private const val SHAKE_ACCUM_NEEDED = 3
         private const val SHAKE_ACCUM_WINDOW_MS = 3000L
         private const val SHAKE_DEBOUNCE_MS = 250L
-
+        // Battery thresholds
+        private const val LOW_BATTERY_THRESHOLD = 30
         const val ACTION_RELOAD_DECKS = "com.clawd.pet.RELOAD_DECKS"
-
         // Supabase whisper
         private const val SUPABASE_URL = "https://oonkoosthtghkctzqutu.supabase.co"
         private const val SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vbmtvb3N0aHRnaGtjdHpxdXR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU5MTI1MTYsImV4cCI6MjEwMTQ4ODUxNn0.cH5I-_m0fJ1xba7VD_0q4sSWbJgJtcZ4d5FSKr4uSNk"
-        private const val WHISPER_INTERVAL_MS = 1800_000L // 30 minutes
+        private const val WHISPER_INTERVAL_MS = 1800_000L
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -126,20 +113,17 @@ class OverlayService : Service(), SensorEventListener {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-
         val dm = resources.displayMetrics
         screenWidth = dm.widthPixels
         screenHeight = dm.heightPixels
         petSizePx = dpToPx(PET_SIZE_DP)
-
         deckManager = DeckManager(this)
         decks = deckManager.loadDecks()
-
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         linearAccel = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
-
         setupOverlay()
         registerSensor()
+        registerBatteryReceiver()
         scheduleWalk()
         startWhisperRotation()
     }
@@ -167,8 +151,105 @@ class OverlayService : Service(), SensorEventListener {
         }
     }
 
-    // === OVERLAY SETUP ===
+    // === BATTERY AWARENESS ===
+    private fun registerBatteryReceiver() {
+        batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                    val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                    val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                    val pct = (level * 100) / scale
+                    val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                    val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL
+                    onBatteryUpdate(pct, charging)
+                }
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryReceiver, filter)
+    }
 
+    private fun onBatteryUpdate(pct: Int, charging: Boolean) {
+        val wasLow = isLowBattery
+        val wasCharging = isCharging
+        isCharging = charging
+        isLowBattery = !charging && pct <= LOW_BATTERY_THRESHOLD
+
+        // Entering low battery mode
+        if (isLowBattery && !wasLow) {
+            onEnterLowBattery()
+        }
+        // Exiting low battery (charged above threshold or started charging)
+        if (!isLowBattery && wasLow) {
+            onExitLowBattery()
+        }
+        // Started charging
+        if (isCharging && !wasCharging) {
+            onStartCharging()
+        }
+        // Stopped charging
+        if (!isCharging && wasCharging) {
+            onStopCharging()
+        }
+    }
+
+    private fun onEnterLowBattery() {
+        if (isDragging || isPeeking || isBouncing) return
+        isWalking = false
+        handler.removeCallbacksAndMessages(null)
+        // Play low_alert animation for 3 seconds, then enter idle_low
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('low_alert')", null)
+        handler.postDelayed({
+            if (isLowBattery && !isDragging && !isPeeking && !isBouncing) {
+                overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle_low')", null)
+                scheduleWalk()
+            }
+        }, 3000L)
+    }
+
+    private fun onExitLowBattery() {
+        if (!isDragging && !isPeeking && !isBouncing && !isWalking) {
+            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle')", null)
+            scheduleWalk()
+        }
+    }
+
+    private fun onStartCharging() {
+        if (isDragging || isPeeking || isBouncing) return
+        isWalking = false
+        handler.removeCallbacksAndMessages(null)
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('charging')", null)
+        // After 5s of happy charging animation, resume walk
+        handler.postDelayed({
+            if (isCharging && !isDragging && !isPeeking && !isBouncing) {
+                scheduleWalk()
+            }
+        }, 5000L)
+    }
+
+    private fun onStopCharging() {
+        // Will be handled by battery level check
+    }
+
+    // Get the correct idle state based on battery
+    private fun getIdleState(): String {
+        return when {
+            isCharging -> "charging"
+            isLowBattery -> "idle_low"
+            else -> "idle"
+        }
+    }
+
+    // Get the correct walk state based on battery and direction
+    private fun getWalkState(direction: Int): String {
+        return when {
+            isLowBattery -> if (direction == 1) "walk_low_right" else "walk_low_left"
+            else -> if (direction == 1) "walk_right" else "walk_left"
+        }
+    }
+
+    // === OVERLAY SETUP ===
     private fun setupOverlay() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         params = WindowManager.LayoutParams(
@@ -198,17 +279,14 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     // === BOUNDARY HELPERS ===
-
     private fun getLeftBoundary(): Int = -(dpToPx(GIF_PAD_LEFT_DP) + dpToPx(WALK_OVERFLOW_DP))
     private fun getRightBoundary(): Int = screenWidth - petSizePx + dpToPx(GIF_PAD_RIGHT_DP) + dpToPx(WALK_OVERFLOW_DP)
     private fun getTopBoundary(): Int = -dpToPx(GIF_PAD_TOP_DP)
     private fun getBottomBoundary(): Int = screenHeight - petSizePx
-
     private fun clampX(x: Int): Int = x.coerceIn(getLeftBoundary(), getRightBoundary())
     private fun clampY(y: Int): Int = y.coerceIn(getTopBoundary(), getBottomBoundary())
 
     // === WALK LOGIC ===
-
     private fun scheduleWalk() {
         if (isPeeking || isBouncing) return
         val delay = 3000L + (Math.random() * 4000).toLong()
@@ -227,8 +305,8 @@ class OverlayService : Service(), SensorEventListener {
             else if (walkDirection == 1 && it.x >= getRightBoundary()) walkDirection = -1
         }
         walkStepsRemaining = 40 + (Math.random() * 40).toInt()
-        val dir = if (walkDirection == 1) "walk_right" else "walk_left"
-        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$dir')", null)
+        val anim = getWalkState(walkDirection)
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$anim')", null)
         walkStep()
     }
 
@@ -239,10 +317,12 @@ class OverlayService : Service(), SensorEventListener {
             val newX = it.x + walkDirection * WALK_STEP_PX
             if (newX <= getLeftBoundary()) {
                 walkDirection = 1
-                overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('walk_right')", null)
+                val anim = getWalkState(1)
+                overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$anim')", null)
             } else if (newX >= getRightBoundary()) {
                 walkDirection = -1
-                overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('walk_left')", null)
+                val anim = getWalkState(-1)
+                overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$anim')", null)
             }
             it.x = clampX(it.x + walkDirection * WALK_STEP_PX)
             try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
@@ -252,12 +332,12 @@ class OverlayService : Service(), SensorEventListener {
 
     private fun stopWalking() {
         isWalking = false
-        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle')", null)
+        val idle = getIdleState()
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
         scheduleWalk()
     }
 
     // === PEEK LOGIC ===
-
     private fun enterPeek(side: Int) {
         isPeeking = true
         peekSide = side
@@ -279,42 +359,32 @@ class OverlayService : Service(), SensorEventListener {
     private fun exitPeek() { isPeeking = false; peekSide = 0 }
 
     // === PHYSICS BOUNCE (continuous force model) ===
-
-    private var lastBounceDir = 0 // track animation direction to avoid spam
-
+    private var lastBounceDir = 0
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type != Sensor.TYPE_LINEAR_ACCELERATION) return
         val ax = event.values[0]
         val ay = event.values[1]
-
         if (isDragging || isPeeking || isHanging) return
-
         val mag = Math.sqrt((ax * ax + ay * ay).toDouble()).toFloat()
-
         // --- Bounce trigger detection ---
         if (!isBouncing && mag > SHAKE_THRESHOLD) {
             val now = System.currentTimeMillis()
-            // Debounce: one shake event per 300ms
             if (now - lastShakeAccumTime < SHAKE_DEBOUNCE_MS) return
             lastShakeAccumTime = now
-
             if (shakeAccumCount == 0 || now - shakeAccumStart > SHAKE_ACCUM_WINDOW_MS) {
                 shakeAccumCount = 1
                 shakeAccumStart = now
             } else {
                 shakeAccumCount++
             }
-
             if (shakeAccumCount >= SHAKE_ACCUM_NEEDED) {
                 shakeAccumCount = 0
                 enterBounceMode()
             }
             return
         }
-
         // --- Continuous force while bouncing ---
         if (isBouncing) {
-            // Dead zone: ignore small noise to prevent drifting
             val effectiveAx = if (Math.abs(ax) > 1.5f) ax else 0f
             val effectiveAy = if (Math.abs(ay) > 1.5f) ay else 0f
             bounceVx += -effectiveAx * BOUNCE_ACCEL_SCALE
@@ -341,56 +411,35 @@ class OverlayService : Service(), SensorEventListener {
 
     private fun bounceStep() {
         if (!isBouncing) return
-
-        // Damping
         bounceVx *= BOUNCE_DAMPING
         bounceVy *= BOUNCE_DAMPING
-
         val speed = Math.sqrt((bounceVx * bounceVx + bounceVy * bounceVy).toDouble()).toFloat()
-
-        // Exit if slow enough and sensor is quiet
-        if (speed < BOUNCE_STOP_SPEED) {
-            exitBounceMode()
-            return
-        }
-
+        if (speed < BOUNCE_STOP_SPEED) { exitBounceMode(); return }
         params?.let {
             val newX = it.x + bounceVx.toInt()
             val newY = it.y + bounceVy.toInt()
-
-            // X collision - instant bounce
             if (newX <= getLeftBoundary()) {
                 bounceVx = Math.abs(bounceVx) * BOUNCE_WALL_FACTOR
                 it.x = getLeftBoundary()
             } else if (newX >= getRightBoundary()) {
                 bounceVx = -Math.abs(bounceVx) * BOUNCE_WALL_FACTOR
                 it.x = getRightBoundary()
-            } else {
-                it.x = newX
-            }
-
-            // Y collision - instant bounce
+            } else { it.x = newX }
             if (newY <= getTopBoundary()) {
                 bounceVy = Math.abs(bounceVy) * BOUNCE_WALL_FACTOR
                 it.y = getTopBoundary()
             } else if (newY >= getBottomBoundary()) {
                 bounceVy = -Math.abs(bounceVy) * BOUNCE_WALL_FACTOR
                 it.y = getBottomBoundary()
-            } else {
-                it.y = newY
-            }
-
+            } else { it.y = newY }
             try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
         }
-
-        // Update animation direction (only when direction changes)
         val newDir = if (bounceVx >= 0) 1 else -1
         if (newDir != lastBounceDir) {
             lastBounceDir = newDir
-            val anim = if (newDir == 1) "walk_right" else "walk_left"
+            val anim = getWalkState(newDir)
             overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$anim')", null)
         }
-
         scheduleBounceStep()
     }
 
@@ -399,12 +448,12 @@ class OverlayService : Service(), SensorEventListener {
         bounceVx = 0f
         bounceVy = 0f
         lastBounceDir = 0
-        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle')", null)
+        val idle = getIdleState()
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
         scheduleWalk()
     }
 
     // === FORTUNE: FINGER DIRECTION REVERSAL ===
-
     private fun resetFortuneDetection() {
         lastDragX = 0f
         lastDragDirection = 0
@@ -441,12 +490,12 @@ class OverlayService : Service(), SensorEventListener {
             isDragging = false
             val card = deckManager.drawCard(decks)
             if (card != null) showFortune(card)
-            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle')", null)
+            val idle = getIdleState()
+            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
         }, FORTUNE_DELAY_MS)
     }
 
     // === FORTUNE DISPLAY ===
-
     private fun showFortune(text: String) {
         if (fortuneView != null) return
         val padding = dpToPx(24)
@@ -479,8 +528,52 @@ class OverlayService : Service(), SensorEventListener {
         fortuneView = null; fortuneParams = null
     }
 
-    // === TOUCH HANDLING ===
+    // === WHISPER BUBBLE (floating speech bubble above Clawd) ===
+    private fun showWhisperBubble(text: String) {
+        if (whisperView != null) dismissWhisperBubble()
+        val paddingH = dpToPx(12)
+        val paddingV = dpToPx(8)
+        val tv = TextView(this).apply {
+            this.text = text
+            setTextColor(Color.parseColor("#333333"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            setPadding(paddingH, paddingV, paddingH, paddingV)
+            maxWidth = (screenWidth * 0.6).toInt()
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#f0ffffff"))
+                cornerRadius = dpToPx(12).toFloat()
+                setStroke(dpToPx(1), Color.parseColor("#e0e0e0"))
+            }
+            elevation = 6f
+        }
+        tv.setOnClickListener { dismissWhisperBubble() }
+        // Position above Clawd's current location
+        val petX = params?.x ?: (screenWidth / 2)
+        val petY = params?.y ?: (screenHeight / 3)
+        whisperParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (petX + petSizePx / 2 - (screenWidth * 0.3).toInt()).coerceIn(dpToPx(8), screenWidth - (screenWidth * 0.6).toInt() - dpToPx(8))
+            y = (petY - dpToPx(60)).coerceAtLeast(dpToPx(24))
+        }
+        whisperView = tv
+        try { windowManager?.addView(tv, whisperParams) } catch (e: Exception) {}
+        // Auto dismiss after 8 seconds
+        whisperHandler.postDelayed({ dismissWhisperBubble() }, 8000L)
+    }
 
+    private fun dismissWhisperBubble() {
+        whisperView?.let { try { windowManager?.removeView(it) } catch (e: Exception) {} }
+        whisperView = null; whisperParams = null
+    }
+
+    // === TOUCH HANDLING ===
     private var initialX = 0
     private var initialY = 0
     private var initialTouchX = 0f
@@ -532,6 +625,7 @@ class OverlayService : Service(), SensorEventListener {
                 MotionEvent.ACTION_UP -> {
                     val elapsed = System.currentTimeMillis() - touchStartTime
                     if (!hasMoved) {
+                        if (whisperView != null) { dismissWhisperBubble() }
                         if (fortuneView != null) { dismissFortune(); scheduleWalk() }
                         else when {
                             elapsed > 600 -> onLongPress()
@@ -552,7 +646,8 @@ class OverlayService : Service(), SensorEventListener {
     private fun onTap() {
         if (isHanging) {
             isHanging = false
-            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle')", null)
+            val idle = getIdleState()
+            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
             scheduleWalk(); return
         }
         overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.onTap()", null)
@@ -563,7 +658,8 @@ class OverlayService : Service(), SensorEventListener {
     private fun onDoubleTap() {
         if (isHanging) {
             isHanging = false
-            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle')", null)
+            val idle = getIdleState()
+            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
             scheduleWalk(); return
         }
         overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.onDoubleTap()", null)
@@ -594,7 +690,6 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     // === NOTIFICATION ===
-
     private fun buildNotification(): Notification {
         val stopIntent = Intent(this, StopReceiver::class.java)
         val stopPending = PendingIntent.getBroadcast(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
@@ -618,14 +713,13 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     // === WHISPER SYSTEM ===
-
     private fun startWhisperRotation() {
-        handler.postDelayed(object : Runnable {
+        whisperHandler.postDelayed(object : Runnable {
             override fun run() {
                 fetchAndShowWhisper()
-                handler.postDelayed(this, WHISPER_INTERVAL_MS)
+                whisperHandler.postDelayed(this, WHISPER_INTERVAL_MS)
             }
-        }, 5000L) // first whisper 5s after start
+        }, 5000L)
     }
 
     private fun fetchAndShowWhisper() {
@@ -640,7 +734,6 @@ class OverlayService : Service(), SensorEventListener {
                 conn.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
                 conn.connectTimeout = 10000
                 conn.readTimeout = 10000
-
                 if (conn.responseCode == 200) {
                     val body = conn.inputStream.bufferedReader().readText()
                     val arr = JSONArray(body)
@@ -648,18 +741,12 @@ class OverlayService : Service(), SensorEventListener {
                         val obj = arr.getJSONObject(0)
                         val text = obj.getString("text")
                         val id = obj.getLong("id")
-
-                        // Update notification on main thread
-                        handler.post { updateNotificationWhisper(text) }
-
-                        // Mark as used
+                        handler.post { showWhisperBubble(text) }
                         markWhisperUsed(id)
                     }
                 }
                 conn.disconnect()
-            } catch (e: Exception) {
-                // Silent fail - network might be unavailable
-            }
+            } catch (e: Exception) {}
         }.start()
     }
 
@@ -692,30 +779,15 @@ class OverlayService : Service(), SensorEventListener {
         }
     }
 
-    private fun updateNotificationWhisper(text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        val stopIntent = Intent(this, StopReceiver::class.java)
-        val stopPending = PendingIntent.getBroadcast(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
-        val openIntent = packageManager.getLaunchIntentForPackage(packageName)
-        val openPending = PendingIntent.getActivity(this, 0, openIntent, PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("\uD83E\uDD80 Clawd")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setContentIntent(openPending)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "关闭", stopPending)
-            .setOngoing(true)
-            .setSilent(true)
-            .build()
-        nm.notify(NOTIFICATION_ID, notification)
-    }
-
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        whisperHandler.removeCallbacksAndMessages(null)
         unregisterSensor()
+        batteryReceiver?.let { try { unregisterReceiver(it) } catch (e: Exception) {} }
         dismissFortune()
+        dismissWhisperBubble()
         overlayView?.let { windowManager?.removeView(it); it.destroy() }
         overlayView = null
         super.onDestroy()
