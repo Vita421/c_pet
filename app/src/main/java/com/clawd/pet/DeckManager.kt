@@ -105,6 +105,10 @@ class DeckManager(private val context: Context) {
         }
     }
 
+    fun clearHistory() {
+        historyFile.delete()
+    }
+
     private fun addHistory(record: DrawRecord) {
         val records = loadHistory().toMutableList()
         records.add(0, record)

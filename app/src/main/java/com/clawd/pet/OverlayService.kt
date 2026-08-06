@@ -23,7 +23,6 @@ import android.widget.TextView
 import androidx.core.app.NotificationCompat
 
 class OverlayService : Service(), SensorEventListener {
-
     private var windowManager: WindowManager? = null
     private var overlayView: WebView? = null
     private var params: WindowManager.LayoutParams? = null
@@ -36,41 +35,70 @@ class OverlayService : Service(), SensorEventListener {
     private var petSizePx = 0
 
     private val handler = Handler(Looper.getMainLooper())
+
+    // Walk state
     private var isWalking = false
     private var walkDirection = 1
     private var walkStepsRemaining = 0
 
+    // Peek state
     private var isPeeking = false
     private var peekSide = 0
 
+    // Sensor
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
-    private var isDragging = false
-    private var lastShakeTime = 0L
-    private var shakeCount = 0
-    private var lastAccelX = 0f
-    private var lastAccelY = 0f
-    private var lastAccelZ = 0f
-    private var isFirstSensorEvent = true
 
+    // Drag state
+    private var isDragging = false
+
+    // Fortune: finger direction reversal detection
+    private var lastDragX = 0f
+    private var lastDragDirection = 0 // -1 left, 1 right, 0 unknown
+    private var directionChangeCount = 0
+    private var firstDirectionChangeTime = 0L
+    private var fortuneTriggered = false
+
+    // Physics bounce state
+    private var isBouncing = false
+    private var bounceVelocityX = 0f
+    private var bounceVelocityY = 0f
+    private var isBouncePaused = false // wall hit idle pause
+    private var sensorRegistered = false
+
+    // Deck
     private lateinit var deckManager: DeckManager
     private var decks: MutableList<Deck> = mutableListOf()
 
     companion object {
         private const val CHANNEL_ID = "clawd_overlay_channel"
         private const val NOTIFICATION_ID = 1001
+
         private const val PET_SIZE_DP = 80
         private const val GIF_PAD_LEFT_DP = 8
         private const val GIF_PAD_RIGHT_DP = 8
         private const val GIF_PAD_TOP_DP = 16
         private const val GIF_PAD_BOTTOM_DP = 0
+
         private const val WALK_STEP_PX = 2
         private const val WALK_INTERVAL_MS = 50L
         private const val WALK_OVERFLOW_DP = 10
-        private const val PEEK_BODY_OUT_DP = 32
-        private const val SHAKE_THRESHOLD = 12f
-        private const val SHAKE_COUNT_NEEDED = 3
-        private const val SHAKE_WINDOW_MS = 1500L
+        private const val PEEK_BODY_OUT_DP = 16
+
+        // Fortune trigger: finger direction changes
+        private const val FORTUNE_DIRECTION_CHANGES = 4
+        private const val FORTUNE_WINDOW_MS = 1500L
+        private const val FORTUNE_DELAY_MS = 1000L
+
+        // Physics bounce
+        private const val BOUNCE_ACCEL_SCALE = 3.0f
+        private const val BOUNCE_FRICTION = 0.985f
+        private const val BOUNCE_RESTITUTION = 0.7f
+        private const val BOUNCE_STOP_SPEED = 1.5f
+        private const val BOUNCE_UPDATE_MS = 16L
+        private const val BOUNCE_WALL_IDLE_MS = 1000L
+        private const val BOUNCE_TRIGGER_THRESHOLD = 18f
+
         const val ACTION_RELOAD_DECKS = "com.clawd.pet.RELOAD_DECKS"
     }
 
@@ -80,15 +108,20 @@ class OverlayService : Service(), SensorEventListener {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+
         val dm = resources.displayMetrics
         screenWidth = dm.widthPixels
         screenHeight = dm.heightPixels
         petSizePx = dpToPx(PET_SIZE_DP)
+
         deckManager = DeckManager(this)
         decks = deckManager.loadDecks()
+
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
         setupOverlay()
+        registerSensor()
         scheduleWalk()
     }
 
@@ -99,20 +132,42 @@ class OverlayService : Service(), SensorEventListener {
         return START_STICKY
     }
 
+    // === SENSOR MANAGEMENT ===
+
+    private fun registerSensor() {
+        if (!sensorRegistered) {
+            accelerometer?.let {
+                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+                sensorRegistered = true
+            }
+        }
+    }
+
+    private fun unregisterSensor() {
+        if (sensorRegistered) {
+            sensorManager?.unregisterListener(this)
+            sensorRegistered = false
+        }
+    }
+
+    // === OVERLAY SETUP ===
+
     private fun setupOverlay() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
         params = WindowManager.LayoutParams(
             petSizePx,
             petSizePx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = (screenWidth - petSizePx) / 2
             y = screenHeight / 3
         }
+
         overlayView = WebView(this).apply {
             setBackgroundColor(0x00000000)
             settings.apply {
@@ -128,20 +183,23 @@ class OverlayService : Service(), SensorEventListener {
         windowManager?.addView(overlayView, params)
     }
 
+    // === BOUNDARY HELPERS ===
+
     private fun getLeftBoundary(): Int = -(dpToPx(GIF_PAD_LEFT_DP) + dpToPx(WALK_OVERFLOW_DP))
     private fun getRightBoundary(): Int = screenWidth - petSizePx + dpToPx(GIF_PAD_RIGHT_DP) + dpToPx(WALK_OVERFLOW_DP)
     private fun getTopBoundary(): Int = -dpToPx(GIF_PAD_TOP_DP)
     private fun getBottomBoundary(): Int = screenHeight - petSizePx
 
-    private fun clampY(y: Int): Int {
-        return y.coerceIn(getTopBoundary(), getBottomBoundary())
-    }
+    private fun clampX(x: Int): Int = x.coerceIn(getLeftBoundary(), getRightBoundary())
+    private fun clampY(y: Int): Int = y.coerceIn(getTopBoundary(), getBottomBoundary())
+
+    // === WALK LOGIC ===
 
     private fun scheduleWalk() {
-        if (isPeeking) return
+        if (isPeeking || isBouncing) return
         val delay = 3000L + (Math.random() * 4000).toLong()
         handler.postDelayed({
-            if (!isWalking && !isPeeking && !isDragging) {
+            if (!isWalking && !isPeeking && !isDragging && !isBouncing) {
                 startWalking()
             }
         }, delay)
@@ -184,10 +242,8 @@ class OverlayService : Service(), SensorEventListener {
                     "window.petEngine && window.petEngine.setState('walk_left')", null
                 )
             }
-            it.x = (it.x + walkDirection * WALK_STEP_PX).coerceIn(getLeftBoundary(), getRightBoundary())
-            try {
-                windowManager?.updateViewLayout(overlayView, it)
-            } catch (e: Exception) {}
+            it.x = clampX(it.x + walkDirection * WALK_STEP_PX)
+            try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
         }
         handler.postDelayed({ walkStep() }, WALK_INTERVAL_MS)
     }
@@ -200,10 +256,13 @@ class OverlayService : Service(), SensorEventListener {
         scheduleWalk()
     }
 
+    // === PEEK LOGIC ===
+
     private fun enterPeek(side: Int) {
         isPeeking = true
         peekSide = side
         isWalking = false
+        isBouncing = false
         handler.removeCallbacksAndMessages(null)
         params?.let {
             if (side == -1) {
@@ -217,9 +276,7 @@ class OverlayService : Service(), SensorEventListener {
                     "window.petEngine && window.petEngine.setState('peek_right')", null
                 )
             }
-            try {
-                windowManager?.updateViewLayout(overlayView, it)
-            } catch (e: Exception) {}
+            try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
         }
     }
 
@@ -228,65 +285,213 @@ class OverlayService : Service(), SensorEventListener {
         peekSide = 0
     }
 
-    private fun startShakeDetection() {
-        shakeCount = 0
-        lastShakeTime = 0L
-        isFirstSensorEvent = true
-        accelerometer?.let {
-            sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-        }
-    }
-
-    private fun stopShakeDetection() {
-        sensorManager?.unregisterListener(this)
-    }
+    // === PHYSICS BOUNCE ===
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type != Sensor.TYPE_ACCELEROMETER) return
-        if (isFirstSensorEvent) {
-            lastAccelX = event.values[0]
-            lastAccelY = event.values[1]
-            lastAccelZ = event.values[2]
-            isFirstSensorEvent = false
-            return
-        }
-        val deltaX = event.values[0] - lastAccelX
-        val deltaY = event.values[1] - lastAccelY
-        val deltaZ = event.values[2] - lastAccelZ
-        lastAccelX = event.values[0]
-        lastAccelY = event.values[1]
-        lastAccelZ = event.values[2]
-        val acceleration = Math.sqrt((deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ).toDouble()).toFloat()
-        if (acceleration > SHAKE_THRESHOLD) {
-            val now = System.currentTimeMillis()
-            if (now - lastShakeTime > SHAKE_WINDOW_MS) {
-                shakeCount = 0
-            }
-            shakeCount++
-            lastShakeTime = now
-            if (shakeCount >= SHAKE_COUNT_NEEDED) {
-                shakeCount = 0
-                onShakeDetected()
-            }
+
+        val ax = event.values[0]
+        val ay = event.values[1]
+
+        // Only trigger bounce when NOT dragging, NOT peeking
+        if (isDragging || isPeeking) return
+
+        val accelMag = Math.sqrt((ax * ax + ay * ay).toDouble()).toFloat()
+
+        if (!isBouncing && accelMag > BOUNCE_TRIGGER_THRESHOLD) {
+            // Enter bounce mode
+            enterBounceMode(-ax * BOUNCE_ACCEL_SCALE, ay * BOUNCE_ACCEL_SCALE)
+        } else if (isBouncing && !isBouncePaused) {
+            // Continuously add acceleration force while bouncing
+            bounceVelocityX += -ax * 0.5f
+            bounceVelocityY += ay * 0.5f
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    private fun onShakeDetected() {
-        stopShakeDetection()
-        isDragging = false
-        val card = deckManager.drawCard(decks)
-        if (card != null) {
-            showFortune(card)
+    private fun enterBounceMode(initialVx: Float, initialVy: Float) {
+        if (isBouncing) return
+
+        isBouncing = true
+        isWalking = false
+        isBouncePaused = false
+        handler.removeCallbacksAndMessages(null)
+
+        bounceVelocityX = initialVx
+        bounceVelocityY = initialVy
+
+        // Set initial animation direction
+        updateBounceAnimation()
+        scheduleBounceStep()
+    }
+
+    private fun scheduleBounceStep() {
+        handler.postDelayed({ bounceStep() }, BOUNCE_UPDATE_MS)
+    }
+
+    private fun bounceStep() {
+        if (!isBouncing || isBouncePaused) return
+
+        // Apply friction
+        bounceVelocityX *= BOUNCE_FRICTION
+        bounceVelocityY *= BOUNCE_FRICTION
+
+        val speed = Math.sqrt((bounceVelocityX * bounceVelocityX + bounceVelocityY * bounceVelocityY).toDouble()).toFloat()
+
+        // Stop if speed too low
+        if (speed < BOUNCE_STOP_SPEED) {
+            exitBounceMode()
+            return
         }
+
+        params?.let {
+            val newX = it.x + bounceVelocityX.toInt()
+            val newY = it.y + bounceVelocityY.toInt()
+
+            var hitWall = false
+
+            // Check X boundaries
+            if (newX <= getLeftBoundary()) {
+                bounceVelocityX = Math.abs(bounceVelocityX) * BOUNCE_RESTITUTION
+                it.x = getLeftBoundary()
+                hitWall = true
+            } else if (newX >= getRightBoundary()) {
+                bounceVelocityX = -Math.abs(bounceVelocityX) * BOUNCE_RESTITUTION
+                it.x = getRightBoundary()
+                hitWall = true
+            } else {
+                it.x = newX
+            }
+
+            // Check Y boundaries
+            if (newY <= getTopBoundary()) {
+                bounceVelocityY = Math.abs(bounceVelocityY) * BOUNCE_RESTITUTION
+                it.y = getTopBoundary()
+                hitWall = true
+            } else if (newY >= getBottomBoundary()) {
+                bounceVelocityY = -Math.abs(bounceVelocityY) * BOUNCE_RESTITUTION
+                it.y = getBottomBoundary()
+                hitWall = true
+            } else {
+                it.y = newY
+            }
+
+            try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
+
+            if (hitWall) {
+                // Pause at wall: show idle for 1 second, then continue
+                isBouncePaused = true
+                overlayView?.evaluateJavascript(
+                    "window.petEngine && window.petEngine.setState('idle')", null
+                )
+                handler.postDelayed({
+                    isBouncePaused = false
+                    if (isBouncing) {
+                        updateBounceAnimation()
+                        scheduleBounceStep()
+                    }
+                }, BOUNCE_WALL_IDLE_MS)
+                return
+            } else {
+                // Update direction animation
+                updateBounceAnimation()
+            }
+        }
+
+        scheduleBounceStep()
+    }
+
+    private fun updateBounceAnimation() {
+        val dir = if (bounceVelocityX >= 0) "walk_right" else "walk_left"
         overlayView?.evaluateJavascript(
-            "window.petEngine && window.petEngine.setState('idle')", null
+            "window.petEngine && window.petEngine.setState('$dir')", null
         )
     }
 
+    private fun exitBounceMode() {
+        isBouncing = false
+        isBouncePaused = false
+        bounceVelocityX = 0f
+        bounceVelocityY = 0f
+        overlayView?.evaluateJavascript(
+            "window.petEngine && window.petEngine.setState('idle')", null
+        )
+        scheduleWalk()
+    }
+
+    // === FORTUNE: FINGER DIRECTION REVERSAL ===
+
+    private fun resetFortuneDetection() {
+        lastDragX = 0f
+        lastDragDirection = 0
+        directionChangeCount = 0
+        firstDirectionChangeTime = 0L
+        fortuneTriggered = false
+    }
+
+    private fun detectDirectionReversal(currentX: Float) {
+        if (fortuneTriggered) return
+
+        if (lastDragX == 0f) {
+            lastDragX = currentX
+            return
+        }
+
+        val dx = currentX - lastDragX
+        lastDragX = currentX
+
+        // Need meaningful movement
+        if (Math.abs(dx) < 3f) return
+
+        val currentDirection = if (dx > 0) 1 else -1
+
+        if (lastDragDirection != 0 && currentDirection != lastDragDirection) {
+            // Direction reversed
+            val now = System.currentTimeMillis()
+
+            if (directionChangeCount == 0) {
+                firstDirectionChangeTime = now
+            }
+
+            // Check if within time window
+            if (now - firstDirectionChangeTime > FORTUNE_WINDOW_MS) {
+                // Reset, window expired
+                directionChangeCount = 1
+                firstDirectionChangeTime = now
+            } else {
+                directionChangeCount++
+            }
+
+            if (directionChangeCount >= FORTUNE_DIRECTION_CHANGES) {
+                // Triggered!
+                fortuneTriggered = true
+                onFortuneTriggered()
+            }
+        }
+
+        lastDragDirection = currentDirection
+    }
+
+    private fun onFortuneTriggered() {
+        // Wait 1 second (animation placeholder), then show fortune
+        handler.postDelayed({
+            isDragging = false
+            val card = deckManager.drawCard(decks)
+            if (card != null) {
+                showFortune(card)
+            }
+            overlayView?.evaluateJavascript(
+                "window.petEngine && window.petEngine.setState('idle')", null
+            )
+        }, FORTUNE_DELAY_MS)
+    }
+
+    // === FORTUNE DISPLAY ===
+
     private fun showFortune(text: String) {
         if (fortuneView != null) return
+
         val padding = dpToPx(24)
         val tv = TextView(this).apply {
             this.text = text
@@ -305,6 +510,7 @@ class OverlayService : Service(), SensorEventListener {
             dismissFortune()
             scheduleWalk()
         }
+
         fortuneParams = WindowManager.LayoutParams(
             (screenWidth * 0.7).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -314,21 +520,20 @@ class OverlayService : Service(), SensorEventListener {
         ).apply {
             gravity = Gravity.CENTER
         }
+
         fortuneView = tv
-        try {
-            windowManager?.addView(tv, fortuneParams)
-        } catch (e: Exception) {}
+        try { windowManager?.addView(tv, fortuneParams) } catch (e: Exception) {}
     }
 
     private fun dismissFortune() {
         fortuneView?.let {
-            try {
-                windowManager?.removeView(it)
-            } catch (e: Exception) {}
+            try { windowManager?.removeView(it) } catch (e: Exception) {}
         }
         fortuneView = null
         fortuneParams = null
     }
+
+    // === TOUCH HANDLING ===
 
     private var initialX = 0
     private var initialY = 0
@@ -345,7 +550,10 @@ class OverlayService : Service(), SensorEventListener {
                 MotionEvent.ACTION_DOWN -> {
                     handler.removeCallbacksAndMessages(null)
                     isWalking = false
+                    isBouncing = false
+                    isBouncePaused = false
                     walkStepsRemaining = 0
+
                     initialX = params?.x ?: 0
                     initialY = params?.y ?: 0
                     initialTouchX = event.rawX
@@ -353,11 +561,13 @@ class OverlayService : Service(), SensorEventListener {
                     touchStartTime = System.currentTimeMillis()
                     hasMoved = false
                     dragNotified = false
+                    resetFortuneDetection()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
+
                     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
                         hasMoved = true
                         if (isPeeking) {
@@ -366,16 +576,17 @@ class OverlayService : Service(), SensorEventListener {
                         params?.let {
                             it.x = initialX + dx
                             it.y = clampY(initialY + dy)
-                            windowManager?.updateViewLayout(overlayView, it)
+                            try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
                         }
                         if (!dragNotified) {
                             dragNotified = true
                             isDragging = true
-                            startShakeDetection()
                             overlayView?.evaluateJavascript(
                                 "window.petEngine && window.petEngine.onDragStart()", null
                             )
                         }
+                        // Detect finger direction reversal for fortune
+                        detectDirectionReversal(event.rawX)
                     }
                     true
                 }
@@ -396,9 +607,13 @@ class OverlayService : Service(), SensorEventListener {
                             }
                         }
                     } else {
-                        stopShakeDetection()
                         isDragging = false
-                        onDragEnd()
+                        if (!fortuneTriggered) {
+                            onDragEnd()
+                        } else {
+                            // Fortune was triggered during drag, just reset position
+                            scheduleWalk()
+                        }
                     }
                     true
                 }
@@ -424,8 +639,8 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onLongPress() {
-        isDragging = true
-        startShakeDetection()
+        // Only play drag animation (clothesline feature)
+        // Do NOT start any detection
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onLongPress()", null
         )
@@ -436,8 +651,10 @@ class OverlayService : Service(), SensorEventListener {
         val peekThresholdPx = dpToPx(PEEK_BODY_OUT_DP)
         val gifLeftPad = dpToPx(GIF_PAD_LEFT_DP)
         val gifRightPad = dpToPx(GIF_PAD_RIGHT_DP)
+
         val gifLeftEdge = currentX + gifLeftPad
         val gifRightEdge = currentX + petSizePx - gifRightPad
+
         if (gifLeftEdge < -peekThresholdPx) {
             enterPeek(-1)
             return
@@ -445,18 +662,21 @@ class OverlayService : Service(), SensorEventListener {
             enterPeek(1)
             return
         }
+
+        // Clamp to boundaries
         params?.let {
-            it.x = it.x.coerceIn(getLeftBoundary(), getRightBoundary())
+            it.x = clampX(it.x)
             it.y = clampY(it.y)
-            try {
-                windowManager?.updateViewLayout(overlayView, it)
-            } catch (e: Exception) {}
+            try { windowManager?.updateViewLayout(overlayView, it) } catch (e: Exception) {}
         }
+
         overlayView?.evaluateJavascript(
             "window.petEngine && window.petEngine.onDragEnd()", null
         )
         scheduleWalk()
     }
+
+    // === NOTIFICATION ===
 
     private fun buildNotification(): Notification {
         val stopIntent = Intent(this, StopReceiver::class.java)
@@ -490,13 +710,15 @@ class OverlayService : Service(), SensorEventListener {
         }
     }
 
+    // === UTIL ===
+
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
-        stopShakeDetection()
+        unregisterSensor()
         dismissFortune()
         overlayView?.let {
             windowManager?.removeView(it)
