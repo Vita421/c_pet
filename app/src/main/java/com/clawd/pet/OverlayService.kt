@@ -198,14 +198,14 @@ class OverlayService : Service(), SensorEventListener {
         if (isDragging || isPeeking || isBouncing) return
         isWalking = false
         handler.removeCallbacksAndMessages(null)
-        // Play low_alert animation for 3 seconds, then enter idle_low
+        // Play low_alert animation for ~8 seconds (4 gif loops), then enter idle_low
         overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('low_alert')", null)
         handler.postDelayed({
             if (isLowBattery && !isDragging && !isPeeking && !isBouncing) {
                 overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('idle_low')", null)
                 scheduleWalk()
             }
-        }, 3000L)
+        }, 8000L)
     }
 
     private fun onExitLowBattery() {
@@ -232,11 +232,11 @@ class OverlayService : Service(), SensorEventListener {
         // Will be handled by battery level check
     }
 
-    // Get the correct idle state based on battery
+    // Get the correct idle state based on battery (random pool)
     private fun getIdleState(): String {
         return when {
-            isCharging -> "charging"
-            isLowBattery -> "idle_low"
+            isCharging -> if (Math.random() < 0.5) "charging" else "idle"
+            isLowBattery -> if (Math.random() < 0.4) "low_alert" else "idle_low"
             else -> "idle"
         }
     }
@@ -548,7 +548,7 @@ class OverlayService : Service(), SensorEventListener {
             elevation = 6f
         }
         tv.setOnClickListener { dismissWhisperBubble() }
-        // Position above Clawd's current location
+        // Position directly above Clawd
         val petX = params?.x ?: (screenWidth / 2)
         val petY = params?.y ?: (screenHeight / 3)
         whisperParams = WindowManager.LayoutParams(
@@ -559,8 +559,9 @@ class OverlayService : Service(), SensorEventListener {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = (petX + petSizePx / 2 - (screenWidth * 0.3).toInt()).coerceIn(dpToPx(8), screenWidth - (screenWidth * 0.6).toInt() - dpToPx(8))
-            y = (petY - dpToPx(60)).coerceAtLeast(dpToPx(24))
+            // Center bubble above pet's head
+            x = (petX + petSizePx / 2 - dpToPx(60)).coerceIn(dpToPx(4), screenWidth - dpToPx(124))
+            y = (petY - dpToPx(36)).coerceAtLeast(dpToPx(8))
         }
         whisperView = tv
         try { windowManager?.addView(tv, whisperParams) } catch (e: Exception) {}
