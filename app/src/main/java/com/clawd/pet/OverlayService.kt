@@ -95,9 +95,9 @@ class OverlayService : Service(), SensorEventListener {
         private const val BOUNCE_UPDATE_MS = 16L
         // Shake detection for bounce trigger
         private const val SHAKE_THRESHOLD = 12f
-        private const val SHAKE_ACCUM_NEEDED = 3
+        private const val SHAKE_ACCUM_NEEDED = 2
         private const val SHAKE_ACCUM_WINDOW_MS = 3000L
-        private const val SHAKE_DEBOUNCE_MS = 250L
+        private const val SHAKE_DEBOUNCE_MS = 200L
         // Battery thresholds
         private const val LOW_BATTERY_THRESHOLD = 30
         const val ACTION_RELOAD_DECKS = "com.clawd.pet.RELOAD_DECKS"
@@ -499,10 +499,20 @@ class OverlayService : Service(), SensorEventListener {
     private fun showFortune(text: String) {
         if (fortuneView != null) return
         val padding = dpToPx(24)
+        // Adaptive sizing based on text length
+        val textSizeSp = when {
+            text.length > 50 -> 15f
+            else -> 18f
+        }
+        val widthFraction = when {
+            text.length <= 15 -> 0.0 // WRAP_CONTENT
+            text.length <= 50 -> 0.7
+            else -> 0.85
+        }
         val tv = TextView(this).apply {
             this.text = text
             setTextColor(Color.parseColor("#2d2d2d"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
             gravity = Gravity.CENTER
             setPadding(padding, padding, padding, padding)
             background = GradientDrawable().apply {
@@ -512,8 +522,13 @@ class OverlayService : Service(), SensorEventListener {
             elevation = 8f
         }
         tv.setOnClickListener { dismissFortune(); scheduleWalk() }
+        val width = if (widthFraction == 0.0) {
+            WindowManager.LayoutParams.WRAP_CONTENT
+        } else {
+            (screenWidth * widthFraction).toInt()
+        }
         fortuneParams = WindowManager.LayoutParams(
-            (screenWidth * 0.7).toInt(),
+            width,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
@@ -548,7 +563,7 @@ class OverlayService : Service(), SensorEventListener {
             elevation = 6f
         }
         tv.setOnClickListener { dismissWhisperBubble() }
-        // Position directly above Clawd
+        // Position directly above Clawd, bottom of bubble touching top of pet window
         val petX = params?.x ?: (screenWidth / 2)
         val petY = params?.y ?: (screenHeight / 3)
         whisperParams = WindowManager.LayoutParams(
@@ -559,9 +574,9 @@ class OverlayService : Service(), SensorEventListener {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // Center bubble above pet's head
+            // Bubble bottom edge touches pet top edge (pet has 16dp top padding = visual space)
             x = (petX + petSizePx / 2 - dpToPx(60)).coerceIn(dpToPx(4), screenWidth - dpToPx(124))
-            y = (petY - dpToPx(36)).coerceAtLeast(dpToPx(8))
+            y = (petY - dpToPx(28)).coerceAtLeast(dpToPx(4))
         }
         whisperView = tv
         try { windowManager?.addView(tv, whisperParams) } catch (e: Exception) {}

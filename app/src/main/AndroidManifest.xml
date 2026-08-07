@@ -24,6 +24,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".DeckActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Clawd"/>
+
         <service
             android:name=".OverlayService"
             android:exported="false"
