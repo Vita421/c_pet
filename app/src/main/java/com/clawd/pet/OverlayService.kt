@@ -132,7 +132,7 @@ class OverlayService : Service(), SensorEventListener {
         deckManager = DeckManager(this)
         decks = deckManager.loadDecks()
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        linearAccel = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        linearAccel = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
         setupOverlay()
         registerSensor()
         registerBatteryReceiver()
@@ -395,7 +395,7 @@ class OverlayService : Service(), SensorEventListener {
     // === PHYSICS BOUNCE (continuous force model) ===
     private var lastBounceDir = 0
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type != Sensor.TYPE_ACCELEROMETER) return
+        if (event?.sensor?.type != Sensor.TYPE_LINEAR_ACCELERATION) return
         val ax = event.values[0]
         val ay = event.values[1]
         if (isDragging || isPeeking || isHanging) return
@@ -876,6 +876,9 @@ class OverlayService : Service(), SensorEventListener {
     private fun startWidgetRotation() {
         widgetRotationHandler.removeCallbacksAndMessages(null)
         widgetShowingHome = true
+        // Reset rotation flag
+        getSharedPreferences(ClawdWidgetProvider.PREFS_NAME, MODE_PRIVATE)
+            .edit().putBoolean(ClawdWidgetProvider.KEY_ROTATION_SHOW_FORTUNE, false).apply()
         widgetRotationHandler.postDelayed(object : Runnable {
             override fun run() {
                 if (!ClawdWidgetProvider.isClawdHome(this@OverlayService)) {
@@ -884,21 +887,14 @@ class OverlayService : Service(), SensorEventListener {
                 }
                 val fortune = ClawdWidgetProvider.getFortuneText(this@OverlayService)
                 if (fortune.isEmpty()) {
-                    // No fortune to rotate, stay on home
                     widgetRotationHandler.postDelayed(this, 10000)
                     return
                 }
                 // Toggle between home animation and fortune
                 widgetShowingHome = !widgetShowingHome
-                if (widgetShowingHome) {
-                    ClawdWidgetProvider.setClawdHome(this@OverlayService, true)
-                } else {
-                    // Temporarily show fortune — hack: set home=false, update, set home=true
-                    val prefs = getSharedPreferences(ClawdWidgetProvider.PREFS_NAME, MODE_PRIVATE)
-                    prefs.edit().putBoolean(ClawdWidgetProvider.KEY_CLAWD_HOME, false).apply()
-                    ClawdWidgetProvider.notifyWidgetUpdate(this@OverlayService)
-                    // Keep internal state as home
-                }
+                getSharedPreferences(ClawdWidgetProvider.PREFS_NAME, MODE_PRIVATE)
+                    .edit().putBoolean(ClawdWidgetProvider.KEY_ROTATION_SHOW_FORTUNE, !widgetShowingHome).apply()
+                ClawdWidgetProvider.notifyWidgetUpdate(this@OverlayService)
                 widgetRotationHandler.postDelayed(this, 10000)
             }
         }, 10000)

@@ -44,10 +44,12 @@ class WidgetManageActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 24)
         })
 
-        // Add widget button
-        layout.addView(makeButton(if (hasWidget) "再添加一个组件" else "添加桌面组件") {
-            requestPinWidget()
-        })
+        // Add widget button (only when no widget exists)
+        if (!hasWidget) {
+            layout.addView(makeButton("添加桌面组件") {
+                requestPinWidget()
+            })
+        }
 
         if (hasWidget) {
             // Section: switch fortune

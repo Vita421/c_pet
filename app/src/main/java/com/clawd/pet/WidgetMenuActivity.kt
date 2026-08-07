@@ -10,13 +10,22 @@ import androidx.appcompat.app.AppCompatActivity
 class WidgetMenuActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val isHome = ClawdWidgetProvider.isClawdHome(this)
+        val isServiceStopped = !isServiceRunning()
+
+        if (isServiceStopped) {
+            // State C: service not running, just open app
+            startActivity(android.content.Intent(this, MainActivity::class.java))
+            finish()
+            return
+        }
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(48, 48, 48, 48)
             setBackgroundColor(Color.parseColor("#CC000000"))
         }
-        // Title
         layout.addView(TextView(this).apply {
             text = "Clawd 组件"
             textSize = 18f
@@ -24,16 +33,30 @@ class WidgetMenuActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 32)
         })
-        // Button: change fortune
-        layout.addView(makeButton("换签文") { showFortuneList() })
-        // Button: change background
-        layout.addView(makeButton("换背景") { switchBackground() })
-        // Button: knock
-        layout.addView(makeButton("敲门召唤") { knockClawd() })
-        // Button: close
-        layout.addView(makeButton("关闭") { finish() })
 
+        // Always show: change fortune
+        layout.addView(makeButton("换签文") { showFortuneList() })
+
+        if (isHome) {
+            // State B: Clawd is home
+            layout.addView(makeButton("敲门召唤") { knockClawd() })
+        } else {
+            // State A: Clawd is outside
+            layout.addView(makeButton("换背景") { toggleBackground() })
+            layout.addView(makeButton("敲门") {
+                Toast.makeText(this, "没人在家哦，Clawd在外面溜达呢", Toast.LENGTH_SHORT).show()
+            })
+        }
+
+        layout.addView(makeButton("关闭") { finish() })
         setContentView(layout)
+    }
+
+    private fun isServiceRunning(): Boolean {
+        val manager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        @Suppress("DEPRECATION")
+        return manager.getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == OverlayService::class.java.name }
     }
 
     private fun makeButton(text: String, action: () -> Unit): Button {
@@ -65,27 +88,24 @@ class WidgetMenuActivity : AppCompatActivity() {
         builder.setTitle("选择签文")
         builder.setItems(fortunes.toTypedArray()) { _, which ->
             ClawdWidgetProvider.setFortuneText(this, fortunes[which])
-            Toast.makeText(this, "已更换", Toast.LENGTH_SHORT).show()
+            ClawdWidgetProvider.notifyWidgetUpdate(this)
             finish()
         }
         builder.show()
     }
 
-    private fun switchBackground() {
-        // Toggle to yellow/home background
-        val isHome = ClawdWidgetProvider.isClawdHome(this)
-        if (!isHome) {
-            ClawdWidgetProvider.setClawdHome(this, true)
-            // Hide overlay via broadcast
-            val intent = android.content.Intent("com.clawd.pet.GO_HOME")
-            intent.setPackage(packageName)
-            sendBroadcast(intent)
-            Toast.makeText(this, "Clawd 回家了", Toast.LENGTH_SHORT).show()
+    private fun toggleBackground() {
+        // Toggle between fortune display and empty home background
+        // This does NOT affect Clawd's overlay — just the widget look
+        val fortune = ClawdWidgetProvider.getFortuneText(this)
+        if (fortune.isNotEmpty()) {
+            // Currently showing fortune → switch to empty home
+            ClawdWidgetProvider.setFortuneText(this, "")
+            ClawdWidgetProvider.notifyWidgetUpdate(this)
+            Toast.makeText(this, "已切换为空家背景", Toast.LENGTH_SHORT).show()
         } else {
-            ClawdWidgetProvider.setClawdHome(this, false)
-            Toast.makeText(this, "已切换为签文", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "没有签文可显示，先去抽一签吧", Toast.LENGTH_SHORT).show()
         }
-        ClawdWidgetProvider.notifyWidgetUpdate(this)
         finish()
     }
 
@@ -94,6 +114,7 @@ class WidgetMenuActivity : AppCompatActivity() {
         intent.setPackage(packageName)
         sendBroadcast(intent)
         ClawdWidgetProvider.setClawdHome(this, false)
+        ClawdWidgetProvider.notifyWidgetUpdate(this)
         Toast.makeText(this, "Clawd 出来啦！", Toast.LENGTH_SHORT).show()
         finish()
     }

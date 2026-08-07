@@ -15,6 +15,7 @@ class ClawdWidgetProvider : AppWidgetProvider() {
         const val KEY_ENABLED = "widget_enabled"
         const val KEY_FORTUNE_TEXT = "widget_fortune"
         const val KEY_CLAWD_HOME = "clawd_is_home"
+        const val KEY_ROTATION_SHOW_FORTUNE = "rotation_show_fortune"
         const val KEY_TODAY_FORTUNES = "today_fortunes"
         const val KEY_TODAY_DATE = "today_date"
         const val ACTION_UPDATE = "com.clawd.pet.WIDGET_UPDATE"
@@ -116,12 +117,24 @@ class ClawdWidgetProvider : AppWidgetProvider() {
         val fortune = getFortuneText(context)
 
         if (isHome) {
-            // Clawd is home — yellow background placeholder
-            views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
-            views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
-            views.setTextViewText(R.id.widget_fortune_text, "\uD83C\uDFE0 Clawd 在家")
-            views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#333333"))
-            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFDD44"))
+            // Check rotation flag
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val showFortune = prefs.getBoolean(KEY_ROTATION_SHOW_FORTUNE, false)
+            if (showFortune && fortune.isNotEmpty()) {
+                // Rotation: show fortune on home background
+                views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
+                views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+                views.setTextViewText(R.id.widget_fortune_text, fortune)
+                views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#333333"))
+                views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFDD44"))
+            } else {
+                // Show home state
+                views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
+                views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+                views.setTextViewText(R.id.widget_fortune_text, "\uD83C\uDFE0 Clawd 在家")
+                views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#333333"))
+                views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFDD44"))
+            }
         } else if (fortune.isNotEmpty()) {
             // Show fortune text
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
@@ -130,11 +143,12 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#f5f5f5"))
             views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#E6000000"))
         } else {
+            // Empty home background (Clawd not home, no fortune)
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
             views.setTextViewText(R.id.widget_fortune_text, "抽一签吧")
-            views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#888888"))
-            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#E6000000"))
+            views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#666666"))
+            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFF5D6"))
         }
 
         // Click opens menu activity

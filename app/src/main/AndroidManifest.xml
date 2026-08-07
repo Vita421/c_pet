@@ -33,7 +33,9 @@
             android:name=".WidgetMenuActivity"
             android:exported="false"
             android:theme="@style/Theme.Clawd.Transparent"
-            android:excludeFromRecents="true"/>
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"/>
         <activity
             android:name=".WidgetManageActivity"
             android:exported="false"
