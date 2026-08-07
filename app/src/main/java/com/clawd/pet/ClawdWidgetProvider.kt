@@ -116,28 +116,34 @@ class ClawdWidgetProvider : AppWidgetProvider() {
         val fortune = getFortuneText(context)
 
         if (isHome) {
-            // Clawd is home — show black background (placeholder for future animation)
-            views.setViewVisibility(R.id.widget_fortune_text, android.view.View.GONE)
-            views.setViewVisibility(R.id.widget_animation, android.view.View.VISIBLE)
+            // Clawd is home — yellow background placeholder
+            views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
+            views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+            views.setTextViewText(R.id.widget_fortune_text, "\uD83C\uDFE0 Clawd 在家")
+            views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#333333"))
+            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFDD44"))
         } else if (fortune.isNotEmpty()) {
             // Show fortune text
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
             views.setTextViewText(R.id.widget_fortune_text, fortune)
             views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#f5f5f5"))
+            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#E6000000"))
         } else {
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
             views.setTextViewText(R.id.widget_fortune_text, "抽一签吧")
             views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#888888"))
+            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#E6000000"))
         }
 
-        // Click opens app
-        val openIntent = Intent(context, MainActivity::class.java)
-        val pendingOpen = PendingIntent.getActivity(
-            context, 0, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // Click opens menu activity
+        val menuIntent = Intent(context, WidgetMenuActivity::class.java)
+        menuIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        val pendingMenu = PendingIntent.getActivity(
+            context, id, menuIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        views.setOnClickPendingIntent(R.id.widget_root, pendingOpen)
+        views.setOnClickPendingIntent(R.id.widget_root, pendingMenu)
 
         mgr.updateAppWidget(id, views)
     }

@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.*
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 class MainActivity : AppCompatActivity() {
     private lateinit var statusText: TextView
@@ -27,7 +26,9 @@ class MainActivity : AppCompatActivity() {
         deckManageButton.setOnClickListener {
             startActivity(Intent(this, DeckActivity::class.java))
         }
-        widgetButton.setOnClickListener { onWidgetClick() }
+        widgetButton.setOnClickListener {
+            startActivity(Intent(this, WidgetManageActivity::class.java))
+        }
         updateUI()
     }
     override fun onResume() {
@@ -71,47 +72,23 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Clawd 回窝了", Toast.LENGTH_SHORT).show()
     }
     private fun knockClawd() {
-        // Send broadcast to service to bring Clawd back out
+        // Send explicit broadcast to service
         val intent = Intent("com.clawd.pet.KNOCK")
+        intent.setPackage(packageName)
         sendBroadcast(intent)
         ClawdWidgetProvider.setClawdHome(this, false)
         updateUI()
         Toast.makeText(this, "Clawd 出来啦！", Toast.LENGTH_SHORT).show()
     }
-    private fun onWidgetClick() {
-        val isEnabled = ClawdWidgetProvider.isWidgetEnabled(this)
-        if (isEnabled) {
-            // Show disable guidance
-            AlertDialog.Builder(this)
-                .setTitle("关闭桌面组件")
-                .setMessage("长按桌面上的组件，拖到「移除」即可关闭。\n\n是否同时在app内取消组件功能？")
-                .setPositiveButton("取消功能") { _, _ ->
-                    ClawdWidgetProvider.setWidgetEnabled(this, false)
-                    ClawdWidgetProvider.setClawdHome(this, false)
-                    updateUI()
-                }
-                .setNegativeButton("保留", null)
-                .show()
-        } else {
-            // Enable and pin
-            ClawdWidgetProvider.setWidgetEnabled(this, true)
-            requestPinWidget()
-            updateUI()
-        }
-    }
-    private fun requestPinWidget() {
-        val mgr = getSystemService(Context.APPWIDGET_SERVICE) as? android.appwidget.AppWidgetManager ?: return
-        val provider = android.content.ComponentName(this, ClawdWidgetProvider::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            if (mgr.isRequestPinAppWidgetSupported) {
-                mgr.requestPinAppWidget(provider, null, null)
-            }
-        }
+    private fun hasWidgetOnScreen(): Boolean {
+        val mgr = android.appwidget.AppWidgetManager.getInstance(this)
+        val ids = mgr.getAppWidgetIds(android.content.ComponentName(this, ClawdWidgetProvider::class.java))
+        return ids.isNotEmpty()
     }
     private fun updateUI() {
         val running = isServiceRunning()
         val isHome = ClawdWidgetProvider.isClawdHome(this)
-        val widgetEnabled = ClawdWidgetProvider.isWidgetEnabled(this)
+        val widgetEnabled = hasWidgetOnScreen()
         when {
             !running -> {
                 statusText.text = "\uD83E\uDD80 Clawd 在窝里等你"

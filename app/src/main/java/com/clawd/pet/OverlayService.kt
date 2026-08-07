@@ -71,6 +71,9 @@ class OverlayService : Service(), SensorEventListener {
     private var isCharging = false
     private var batteryReceiver: BroadcastReceiver? = null
     private var knockReceiver: BroadcastReceiver? = null
+    // Widget rotation
+    private val widgetRotationHandler = Handler(Looper.getMainLooper())
+    private var widgetShowingHome = true
     // Go-home door overlay
     private var doorView: View? = null
     private var doorParams: WindowManager.LayoutParams? = null
@@ -98,8 +101,8 @@ class OverlayService : Service(), SensorEventListener {
         // Physics bounce (modeled after AccelerometerBallBounce)
         private const val BOUNCE_DAMPING = 0.98f
         private const val BOUNCE_WALL_FACTOR = 0.6f
-        private const val BOUNCE_ACCEL_SCALE = 1.5f
-        private const val BOUNCE_GRAVITY = 0.5f
+        private const val BOUNCE_ACCEL_SCALE = 0.8f
+        private const val BOUNCE_GRAVITY = 0.15f
         private const val BOUNCE_STOP_SPEED = 1.5f
         private const val BOUNCE_UPDATE_MS = 16L
         // Shake detection for bounce trigger
@@ -180,16 +183,24 @@ class OverlayService : Service(), SensorEventListener {
         // Knock receiver (bring Clawd back out)
         knockReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == "com.clawd.pet.KNOCK") {
-                    knockClawd()
+                when (intent?.action) {
+                    "com.clawd.pet.KNOCK" -> knockClawd()
+                    "com.clawd.pet.GO_HOME" -> {
+                        ClawdWidgetProvider.setClawdHome(this@OverlayService, true)
+                        overlayView?.visibility = View.INVISIBLE
+                        handler.removeCallbacksAndMessages(null)
+                    }
                 }
             }
         }
+        val knockFilter = IntentFilter().apply {
+            addAction("com.clawd.pet.KNOCK")
+            addAction("com.clawd.pet.GO_HOME")
+        }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(knockReceiver, IntentFilter("com.clawd.pet.KNOCK"),
-                Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(knockReceiver, knockFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(knockReceiver, IntentFilter("com.clawd.pet.KNOCK"))
+            registerReceiver(knockReceiver, knockFilter)
         }
     }
 
@@ -576,16 +587,14 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun showWidgetConfirmDialog(text: String) {
-        val isEnabled = ClawdWidgetProvider.isWidgetEnabled(this)
-        if (!isEnabled) {
-            // First time: enable widget + pin it
-            ClawdWidgetProvider.setWidgetEnabled(this, true)
+        if (!hasWidgetOnScreen()) {
+            // No widget yet: pin one and set the fortune
             ClawdWidgetProvider.setFortuneText(this, text)
             requestPinWidget()
             dismissFortune()
             scheduleWalk()
         } else {
-            // Already enabled: just update the text
+            // Widget exists: just update the text
             ClawdWidgetProvider.setFortuneText(this, text)
             dismissFortune()
             scheduleWalk()
@@ -604,6 +613,7 @@ class OverlayService : Service(), SensorEventListener {
 
     fun knockClawd() {
         // Called when user wants Clawd to come back out
+        stopWidgetRotation()
         ClawdWidgetProvider.setClawdHome(this, false)
         overlayView?.visibility = View.VISIBLE
         scheduleWalk()
@@ -770,20 +780,22 @@ class OverlayService : Service(), SensorEventListener {
 
     // === GO HOME DOOR ===
     private fun showDoor() {
-        if (doorShowing || !ClawdWidgetProvider.isWidgetEnabled(this)) return
+        if (doorShowing || !hasWidgetOnScreen()) return
         doorShowing = true
         doorHighlighted = false
         doorHoverStart = 0L
-        val doorSize = dpToPx(40)
+        val doorW = dpToPx(72)
+        val doorH = dpToPx(56)
         val tv = TextView(this).apply {
-            text = "\uD83C\uDFE0"
-            textSize = 28f
+            text = "\uD83C\uDFE0\n回家"
+            textSize = 22f
             gravity = Gravity.CENTER
-            alpha = 0.5f
+            alpha = 1.0f
+            setTextColor(Color.WHITE)
             setBackgroundResource(android.R.color.transparent)
         }
         doorParams = WindowManager.LayoutParams(
-            doorSize, doorSize,
+            doorW, doorH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
@@ -793,6 +805,12 @@ class OverlayService : Service(), SensorEventListener {
         }
         doorView = tv
         try { windowManager?.addView(tv, doorParams) } catch (e: Exception) {}
+    }
+
+    private fun hasWidgetOnScreen(): Boolean {
+        val mgr = android.appwidget.AppWidgetManager.getInstance(this)
+        val ids = mgr.getAppWidgetIds(android.content.ComponentName(this, ClawdWidgetProvider::class.java))
+        return ids.isNotEmpty()
     }
 
     private fun hideDoor() {
@@ -821,13 +839,25 @@ class OverlayService : Service(), SensorEventListener {
             if (doorHoverStart == 0L) doorHoverStart = System.currentTimeMillis()
             if (!doorHighlighted && System.currentTimeMillis() - doorHoverStart > 500) {
                 doorHighlighted = true
-                doorView?.alpha = 1.0f
+                (doorView as? TextView)?.setTextColor(Color.parseColor("#FFDD00"))
+                doorView?.scaleX = 1.3f
+                doorView?.scaleY = 1.3f
+                // Vibrate to confirm
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(50)
+                }
             }
         } else {
             doorHoverStart = 0L
             if (doorHighlighted) {
                 doorHighlighted = false
-                doorView?.alpha = 0.5f
+                (doorView as? TextView)?.setTextColor(Color.WHITE)
+                doorView?.scaleX = 1.0f
+                doorView?.scaleY = 1.0f
             }
         }
     }
@@ -840,6 +870,42 @@ class OverlayService : Service(), SensorEventListener {
         isDragging = false
         handler.removeCallbacksAndMessages(null)
         overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.onDragEnd()", null)
+        startWidgetRotation()
+    }
+
+    private fun startWidgetRotation() {
+        widgetRotationHandler.removeCallbacksAndMessages(null)
+        widgetShowingHome = true
+        widgetRotationHandler.postDelayed(object : Runnable {
+            override fun run() {
+                if (!ClawdWidgetProvider.isClawdHome(this@OverlayService)) {
+                    stopWidgetRotation()
+                    return
+                }
+                val fortune = ClawdWidgetProvider.getFortuneText(this@OverlayService)
+                if (fortune.isEmpty()) {
+                    // No fortune to rotate, stay on home
+                    widgetRotationHandler.postDelayed(this, 10000)
+                    return
+                }
+                // Toggle between home animation and fortune
+                widgetShowingHome = !widgetShowingHome
+                if (widgetShowingHome) {
+                    ClawdWidgetProvider.setClawdHome(this@OverlayService, true)
+                } else {
+                    // Temporarily show fortune — hack: set home=false, update, set home=true
+                    val prefs = getSharedPreferences(ClawdWidgetProvider.PREFS_NAME, MODE_PRIVATE)
+                    prefs.edit().putBoolean(ClawdWidgetProvider.KEY_CLAWD_HOME, false).apply()
+                    ClawdWidgetProvider.notifyWidgetUpdate(this@OverlayService)
+                    // Keep internal state as home
+                }
+                widgetRotationHandler.postDelayed(this, 10000)
+            }
+        }, 10000)
+    }
+
+    private fun stopWidgetRotation() {
+        widgetRotationHandler.removeCallbacksAndMessages(null)
     }
 
     private fun onDragEnd() {
@@ -958,6 +1024,7 @@ class OverlayService : Service(), SensorEventListener {
         unregisterSensor()
         batteryReceiver?.let { try { unregisterReceiver(it) } catch (e: Exception) {} }
         knockReceiver?.let { try { unregisterReceiver(it) } catch (e: Exception) {} }
+        stopWidgetRotation()
         hideDoor()
         dismissFortune()
         dismissWhisperBubble()

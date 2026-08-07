@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
 
     <application
         android:allowBackup="true"
@@ -26,6 +27,15 @@
 
         <activity
             android:name=".DeckActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Clawd"/>
+        <activity
+            android:name=".WidgetMenuActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Clawd.Transparent"
+            android:excludeFromRecents="true"/>
+        <activity
+            android:name=".WidgetManageActivity"
             android:exported="false"
             android:theme="@style/Theme.Clawd"/>
 
