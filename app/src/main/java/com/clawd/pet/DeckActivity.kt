@@ -47,6 +47,9 @@ class DeckActivity : AppCompatActivity() {
                 .setMessage("确定要清空所有抽签记录吗？")
                 .setPositiveButton("清空") { _, _ ->
                     deckManager.clearHistory()
+                    // Also clear widget fortune history (keep current displayed fortune)
+                    val prefs = getSharedPreferences(ClawdWidgetProvider.PREFS_NAME, MODE_PRIVATE)
+                    prefs.edit().remove(ClawdWidgetProvider.KEY_TODAY_FORTUNES).apply()
                     refreshHistory()
                     Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show()
                 }

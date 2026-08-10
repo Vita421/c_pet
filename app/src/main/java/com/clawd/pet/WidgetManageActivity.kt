@@ -94,6 +94,11 @@ class WidgetManageActivity : AppCompatActivity() {
             })
         }
 
+        // Style settings
+        layout.addView(makeButton("签文样式") {
+            startActivity(android.content.Intent(this, FortuneStyleActivity::class.java))
+        })
+
         // Back
         layout.addView(makeButton("返回") { finish() })
 

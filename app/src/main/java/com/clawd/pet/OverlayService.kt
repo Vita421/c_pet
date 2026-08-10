@@ -519,15 +519,17 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onFortuneTriggered() {
-        // Play yaohuang animation immediately
+        // Play yaohuang animation — stays looping until finger lifts (ACTION_UP)
         overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('yaohuang')", null)
-        handler.postDelayed({
-            isDragging = false
-            val card = deckManager.drawCard(decks)
-            if (card != null) showFortune(card)
-            val idle = getIdleState()
-            overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
-        }, FORTUNE_DELAY_MS)
+        // Don't show fortune yet — wait for ACTION_UP to showFortuneOnRelease()
+    }
+
+    private fun showFortuneOnRelease() {
+        isDragging = false
+        val card = deckManager.drawCard(decks)
+        if (card != null) showFortune(card)
+        val idle = getIdleState()
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('$idle')", null)
     }
 
     // === FORTUNE DISPLAY ===
@@ -753,7 +755,7 @@ class OverlayService : Service(), SensorEventListener {
                             onDragEnd()
                         } else {
                             hideDoor()
-                            scheduleWalk()
+                            showFortuneOnRelease()
                         }
                     }
                     true

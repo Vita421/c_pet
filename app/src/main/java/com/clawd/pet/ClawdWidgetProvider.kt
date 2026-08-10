@@ -127,6 +127,10 @@ class ClawdWidgetProvider : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         val isHome = isClawdHome(context)
         val fortune = getFortuneText(context)
+        // Apply corner style
+        val rounded = FortuneStyleActivity.isRounded(context)
+        views.setInt(R.id.widget_root, "setBackgroundResource",
+            if (rounded) R.drawable.widget_bg else R.drawable.widget_bg_sharp)
 
         if (isHome) {
             // Check rotation flag

@@ -1,12 +1,11 @@
 package com.clawd.pet
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -209,6 +208,12 @@ class FortuneStyleActivity : AppCompatActivity() {
         // Notify widget to update
         ClawdWidgetProvider.notifyWidgetUpdate(this)
         Toast.makeText(this, "样式已保存", Toast.LENGTH_SHORT).show()
+        // Go back to home screen instead of app
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(homeIntent)
         finish()
     }
 
@@ -222,9 +227,8 @@ class FortuneStyleActivity : AppCompatActivity() {
     }
 
     private fun makeColorInput(label: String, initialColor: Int, onChange: (Int) -> Unit): LinearLayout {
-        var r = Color.red(initialColor)
-        var g = Color.green(initialColor)
-        var b = Color.blue(initialColor)
+        val hsv = FloatArray(3)
+        Color.colorToHSV(initialColor, hsv)
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -233,33 +237,27 @@ class FortuneStyleActivity : AppCompatActivity() {
             layoutParams = p
         }
 
-        val previewRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        val previewRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val colorPreview = View(this).apply {
             background = GradientDrawable().apply { setColor(initialColor); cornerRadius = 8f; setStroke(2, Color.parseColor("#666666")) }
             layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply { marginEnd = 16 }
         }
         previewRow.addView(colorPreview)
-        val hexLabel = TextView(this).apply {
-            text = String.format("#%06X", 0xFFFFFF and initialColor)
-            textSize = 13f; setTextColor(Color.parseColor("#aaaaaa"))
-        }
+        val hexLabel = TextView(this).apply { text = String.format("#%06X", 0xFFFFFF and initialColor); textSize = 13f; setTextColor(Color.parseColor("#aaaaaa")) }
         previewRow.addView(hexLabel)
         container.addView(previewRow)
 
         fun refresh() {
-            val color = Color.rgb(r, g, b)
+            val color = Color.HSVToColor(hsv)
             colorPreview.background = GradientDrawable().apply { setColor(color); cornerRadius = 8f; setStroke(2, Color.parseColor("#666666")) }
             hexLabel.text = String.format("#%06X", 0xFFFFFF and color)
             onChange(color)
         }
 
-        fun makeSlider(name: String, initial: Int, color: Int, onVal: (Int) -> Unit): LinearLayout {
+        fun makeSlider(name: String, max: Int, initial: Int, color: Int, onVal: (Int) -> Unit): LinearLayout {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 8, 0, 0) }
-            row.addView(TextView(this).apply { text = name; textSize = 12f; setTextColor(color); layoutParams = LinearLayout.LayoutParams(dpToPx(20), LinearLayout.LayoutParams.WRAP_CONTENT) })
-            val sb = SeekBar(this).apply { max = 255; progress = initial; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+            row.addView(TextView(this).apply { text = name; textSize = 12f; setTextColor(color); layoutParams = LinearLayout.LayoutParams(dpToPx(24), LinearLayout.LayoutParams.WRAP_CONTENT) })
+            val sb = SeekBar(this).apply { this.max = max; progress = initial; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
             sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, v: Int, f: Boolean) { onVal(v); refresh() }
                 override fun onStartTrackingTouch(s: SeekBar?) {}
@@ -269,9 +267,9 @@ class FortuneStyleActivity : AppCompatActivity() {
             return row
         }
 
-        container.addView(makeSlider("R", r, Color.parseColor("#ff6666")) { r = it })
-        container.addView(makeSlider("G", g, Color.parseColor("#66ff66")) { g = it })
-        container.addView(makeSlider("B", b, Color.parseColor("#6666ff")) { b = it })
+        container.addView(makeSlider("H", 360, hsv[0].toInt(), Color.parseColor("#ff9800")) { hsv[0] = it.toFloat() })
+        container.addView(makeSlider("S", 100, (hsv[1] * 100).toInt(), Color.parseColor("#8bc34a")) { hsv[1] = it / 100f })
+        container.addView(makeSlider("V", 100, (hsv[2] * 100).toInt(), Color.parseColor("#03a9f4")) { hsv[2] = it / 100f })
 
         return container
     }
