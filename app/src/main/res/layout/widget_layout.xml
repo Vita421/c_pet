@@ -6,10 +6,11 @@
     android:background="@drawable/widget_bg"
     android:padding="4dp">
 
-    <View
+    <TextView
         android:id="@+id/widget_bg_color"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:text="" />
 
     <TextView
         android:id="@+id/widget_fortune_text"
