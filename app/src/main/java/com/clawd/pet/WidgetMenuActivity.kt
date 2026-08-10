@@ -34,8 +34,12 @@ class WidgetMenuActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 32)
         })
 
-        // Always show: change fortune
+        // Always show: change fortune + style
         layout.addView(makeButton("换签文") { showFortuneList() })
+        layout.addView(makeButton("签文样式") {
+            startActivity(android.content.Intent(this, FortuneStyleActivity::class.java))
+            finish()
+        })
 
         if (isHome) {
             // State B: Clawd is home

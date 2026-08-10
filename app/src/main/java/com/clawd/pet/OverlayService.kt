@@ -546,15 +546,19 @@ class OverlayService : Service(), SensorEventListener {
             text.length <= 50 -> 0.7
             else -> 0.85
         }
+        val styleBgColor = FortuneStyleActivity.getBgColor(this)
+        val styleTextColor = FortuneStyleActivity.getTextColor(this)
+        val styleBgAlpha = FortuneStyleActivity.getBgAlpha(this)
+        val styleRounded = FortuneStyleActivity.isRounded(this)
         val tv = TextView(this).apply {
             this.text = text
-            setTextColor(Color.parseColor("#2d2d2d"))
+            setTextColor(styleTextColor)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
             gravity = Gravity.CENTER
             setPadding(padding, padding, padding, padding)
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#f5f5f5"))
-                cornerRadius = dpToPx(16).toFloat()
+                setColor(Color.argb(styleBgAlpha, Color.red(styleBgColor), Color.green(styleBgColor), Color.blue(styleBgColor)))
+                cornerRadius = if (styleRounded) dpToPx(16).toFloat() else dpToPx(2).toFloat()
             }
             elevation = 8f
         }

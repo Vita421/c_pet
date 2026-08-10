@@ -133,12 +133,21 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val showFortune = prefs.getBoolean(KEY_ROTATION_SHOW_FORTUNE, false)
             if (showFortune && fortune.isNotEmpty()) {
-                // Rotation: show fortune on home background
+                // Rotation: show fortune with custom style
+                val styleBgColor = FortuneStyleActivity.getBgColor(context)
+                val styleTextColor = FortuneStyleActivity.getTextColor(context)
+                val styleBgAlpha = FortuneStyleActivity.getBgAlpha(context)
+                val rotBgColor = android.graphics.Color.argb(
+                    styleBgAlpha,
+                    android.graphics.Color.red(styleBgColor),
+                    android.graphics.Color.green(styleBgColor),
+                    android.graphics.Color.blue(styleBgColor)
+                )
                 views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
                 views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
                 views.setTextViewText(R.id.widget_fortune_text, fortune)
-                views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#333333"))
-                views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFDD44"))
+                views.setTextColor(R.id.widget_fortune_text, styleTextColor)
+                views.setInt(R.id.widget_root, "setBackgroundColor", rotBgColor)
             } else {
                 // Show home state
                 views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
@@ -148,12 +157,21 @@ class ClawdWidgetProvider : AppWidgetProvider() {
                 views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFDD44"))
             }
         } else if (fortune.isNotEmpty()) {
-            // Show fortune text
+            // Show fortune text with custom style
+            val styleBgColor = FortuneStyleActivity.getBgColor(context)
+            val styleTextColor = FortuneStyleActivity.getTextColor(context)
+            val styleBgAlpha = FortuneStyleActivity.getBgAlpha(context)
+            val widgetBgColor = android.graphics.Color.argb(
+                styleBgAlpha,
+                android.graphics.Color.red(styleBgColor),
+                android.graphics.Color.green(styleBgColor),
+                android.graphics.Color.blue(styleBgColor)
+            )
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
             views.setTextViewText(R.id.widget_fortune_text, fortune)
-            views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#f5f5f5"))
-            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#E6000000"))
+            views.setTextColor(R.id.widget_fortune_text, styleTextColor)
+            views.setInt(R.id.widget_root, "setBackgroundColor", widgetBgColor)
         } else {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val cleared = prefs.getBoolean(KEY_FORTUNE_CLEARED, false)

@@ -40,6 +40,10 @@
             android:name=".WidgetManageActivity"
             android:exported="false"
             android:theme="@style/Theme.Clawd"/>
+        <activity
+            android:name=".FortuneStyleActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Clawd"/>
 
         <service
             android:name=".OverlayService"
