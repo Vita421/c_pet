@@ -95,18 +95,24 @@ class WidgetMenuActivity : AppCompatActivity() {
     }
 
     private fun toggleBackground() {
-        // Toggle between fortune display and empty home background
-        // This does NOT affect Clawd's overlay — just the widget look
         val fortune = ClawdWidgetProvider.getFortuneText(this)
         if (fortune.isNotEmpty()) {
-            // Currently showing fortune → switch to empty home
-            ClawdWidgetProvider.setFortuneText(this, "")
-            ClawdWidgetProvider.notifyWidgetUpdate(this)
-            Toast.makeText(this, "已切换为空家背景", Toast.LENGTH_SHORT).show()
+            // Currently showing fortune → confirm before clearing
+            android.app.AlertDialog.Builder(this)
+                .setTitle("切换背景")
+                .setMessage("签文将清空，后续可继续添加")
+                .setPositiveButton("确认") { _, _ ->
+                    ClawdWidgetProvider.setFortuneText(this, "")
+                    ClawdWidgetProvider.notifyWidgetUpdate(this)
+                    Toast.makeText(this, "已切换为空背景", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+                .setNegativeButton("取消") { d, _ -> d.dismiss() }
+                .show()
         } else {
-            Toast.makeText(this, "没有签文可显示，先去抽一签吧", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "当前已是空背景，去抽一签吧", Toast.LENGTH_SHORT).show()
+            finish()
         }
-        finish()
     }
 
     private fun knockClawd() {

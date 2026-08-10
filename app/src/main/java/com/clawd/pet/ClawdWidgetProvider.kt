@@ -18,6 +18,7 @@ class ClawdWidgetProvider : AppWidgetProvider() {
         const val KEY_ROTATION_SHOW_FORTUNE = "rotation_show_fortune"
         const val KEY_TODAY_FORTUNES = "today_fortunes"
         const val KEY_TODAY_DATE = "today_date"
+        const val KEY_FORTUNE_CLEARED = "fortune_cleared"
         const val ACTION_UPDATE = "com.clawd.pet.WIDGET_UPDATE"
         const val ACTION_CLAWD_HOME = "com.clawd.pet.CLAWD_GO_HOME"
         const val ACTION_CLAWD_OUT = "com.clawd.pet.CLAWD_GO_OUT"
@@ -45,9 +46,20 @@ class ClawdWidgetProvider : AppWidgetProvider() {
 
         fun setFortuneText(context: Context, text: String) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putString(KEY_FORTUNE_TEXT, text).apply()
-            // Also add to today's history
-            addTodayFortune(context, text)
+            val editor = prefs.edit()
+            editor.putString(KEY_FORTUNE_TEXT, text)
+            if (text.isEmpty()) {
+                // Mark as explicitly cleared (not "never drawn")
+                editor.putBoolean(KEY_FORTUNE_CLEARED, true)
+            } else {
+                editor.putBoolean(KEY_FORTUNE_CLEARED, false)
+                addTodayFortune(context, text)
+                // If Clawd is home, force rotation to show fortune immediately
+                if (prefs.getBoolean(KEY_CLAWD_HOME, false)) {
+                    editor.putBoolean(KEY_ROTATION_SHOW_FORTUNE, true)
+                }
+            }
+            editor.apply()
             notifyWidgetUpdate(context)
         }
 
@@ -143,12 +155,20 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#f5f5f5"))
             views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#E6000000"))
         } else {
-            // Empty home background (Clawd not home, no fortune)
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val cleared = prefs.getBoolean(KEY_FORTUNE_CLEARED, false)
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
-            views.setTextViewText(R.id.widget_fortune_text, "抽一签吧")
-            views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#666666"))
-            views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFF5D6"))
+            if (cleared) {
+                // Clawd not home, fortune was explicitly cleared → empty "away" background
+                views.setTextViewText(R.id.widget_fortune_text, "")
+                views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#2A2A2A"))
+            } else {
+                // Never drawn yet → prompt
+                views.setTextViewText(R.id.widget_fortune_text, "抽一签吧")
+                views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#666666"))
+                views.setInt(R.id.widget_root, "setBackgroundColor", android.graphics.Color.parseColor("#FFF5D6"))
+            }
         }
 
         // Click opens menu activity

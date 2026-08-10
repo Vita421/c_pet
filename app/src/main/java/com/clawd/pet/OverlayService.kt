@@ -519,6 +519,8 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun onFortuneTriggered() {
+        // Play yaohuang animation immediately
+        overlayView?.evaluateJavascript("window.petEngine&&window.petEngine.setState('yaohuang')", null)
         handler.postDelayed({
             isDragging = false
             val card = deckManager.drawCard(decks)
@@ -557,7 +559,9 @@ class OverlayService : Service(), SensorEventListener {
             elevation = 8f
         }
         tv.setOnClickListener { dismissFortune(); scheduleWalk() }
-        tv.setOnLongClickListener {
+        tv.setOnLongClickListener { view ->
+            // Haptic feedback on long press
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
             // Send fortune to widget
             showWidgetConfirmDialog(text)
             true
