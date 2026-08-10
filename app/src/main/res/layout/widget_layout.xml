@@ -3,8 +3,13 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="8dp"
-    android:background="@drawable/widget_bg">
+    android:background="@drawable/widget_bg"
+    android:clipToOutline="true">
+
+    <View
+        android:id="@+id/widget_bg_color"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
     <TextView
         android:id="@+id/widget_fortune_text"
@@ -23,7 +28,6 @@
         android:visibility="gone"
         android:flipInterval="500"
         android:autoStart="true">
-        <!-- Frames will be set programmatically when assets available -->
         <ImageView
             android:layout_width="match_parent"
             android:layout_height="match_parent"

@@ -12,6 +12,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toggleButton: Button
     private lateinit var deckManageButton: Button
     private lateinit var widgetButton: Button
+    private lateinit var guardButton: Button
     companion object {
         private const val OVERLAY_PERMISSION_CODE = 1001
     }
@@ -28,6 +29,10 @@ class MainActivity : AppCompatActivity() {
         }
         widgetButton.setOnClickListener {
             startActivity(Intent(this, WidgetManageActivity::class.java))
+        }
+        guardButton = findViewById(R.id.guardButton)
+        guardButton.setOnClickListener {
+            startActivity(Intent(this, AppGuardSettingsActivity::class.java))
         }
         updateUI()
     }
