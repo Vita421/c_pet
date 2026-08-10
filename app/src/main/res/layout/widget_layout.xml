@@ -3,14 +3,7 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
-    android:padding="4dp">
-
-    <TextView
-        android:id="@+id/widget_bg_color"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:text="" />
+    android:padding="8dp">
 
     <TextView
         android:id="@+id/widget_fortune_text"
