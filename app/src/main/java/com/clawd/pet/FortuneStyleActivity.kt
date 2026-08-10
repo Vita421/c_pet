@@ -222,54 +222,58 @@ class FortuneStyleActivity : AppCompatActivity() {
     }
 
     private fun makeColorInput(label: String, initialColor: Int, onChange: (Int) -> Unit): LinearLayout {
-        val row = LinearLayout(this).apply {
+        var r = Color.red(initialColor)
+        var g = Color.green(initialColor)
+        var b = Color.blue(initialColor)
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val p = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            p.bottomMargin = 24
+            layoutParams = p
+        }
+
+        val previewRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
         val colorPreview = View(this).apply {
-            background = GradientDrawable().apply {
-                setColor(initialColor)
-                cornerRadius = 8f
-                setStroke(2, Color.parseColor("#666666"))
-            }
-            layoutParams = LinearLayout.LayoutParams(dpToPx(32), dpToPx(32)).apply { marginEnd = 16 }
+            background = GradientDrawable().apply { setColor(initialColor); cornerRadius = 8f; setStroke(2, Color.parseColor("#666666")) }
+            layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply { marginEnd = 16 }
         }
-        row.addView(colorPreview)
+        previewRow.addView(colorPreview)
+        val hexLabel = TextView(this).apply {
+            text = String.format("#%06X", 0xFFFFFF and initialColor)
+            textSize = 13f; setTextColor(Color.parseColor("#aaaaaa"))
+        }
+        previewRow.addView(hexLabel)
+        container.addView(previewRow)
 
-        val hexInput = EditText(this).apply {
-            setText(String.format("#%06X", 0xFFFFFF and initialColor))
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#333333"))
-            setPadding(16, 8, 16, 8)
-            isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    val hex = s?.toString() ?: return
-                    try {
-                        val color = Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
-                        colorPreview.background = GradientDrawable().apply {
-                            setColor(color)
-                            cornerRadius = 8f
-                            setStroke(2, Color.parseColor("#666666"))
-                        }
-                        onChange(color)
-                    } catch (e: Exception) {}
-                }
+        fun refresh() {
+            val color = Color.rgb(r, g, b)
+            colorPreview.background = GradientDrawable().apply { setColor(color); cornerRadius = 8f; setStroke(2, Color.parseColor("#666666")) }
+            hexLabel.text = String.format("#%06X", 0xFFFFFF and color)
+            onChange(color)
+        }
+
+        fun makeSlider(name: String, initial: Int, color: Int, onVal: (Int) -> Unit): LinearLayout {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 8, 0, 0) }
+            row.addView(TextView(this).apply { text = name; textSize = 12f; setTextColor(color); layoutParams = LinearLayout.LayoutParams(dpToPx(20), LinearLayout.LayoutParams.WRAP_CONTENT) })
+            val sb = SeekBar(this).apply { max = 255; progress = initial; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+            sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, v: Int, f: Boolean) { onVal(v); refresh() }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {}
             })
+            row.addView(sb)
+            return row
         }
-        row.addView(hexInput)
 
-        val params = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        params.bottomMargin = 16
-        row.layoutParams = params
-        return row
+        container.addView(makeSlider("R", r, Color.parseColor("#ff6666")) { r = it })
+        container.addView(makeSlider("G", g, Color.parseColor("#66ff66")) { g = it })
+        container.addView(makeSlider("B", b, Color.parseColor("#6666ff")) { b = it })
+
+        return container
     }
 
     private fun marginParams(l: Int, t: Int, r: Int, b: Int): LinearLayout.LayoutParams {
