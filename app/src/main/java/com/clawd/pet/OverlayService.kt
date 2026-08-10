@@ -559,9 +559,15 @@ class OverlayService : Service(), SensorEventListener {
             elevation = 8f
         }
         tv.setOnClickListener { dismissFortune(); scheduleWalk() }
-        tv.setOnLongClickListener { view ->
-            // Haptic feedback on long press
-            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        tv.setOnLongClickListener {
+            // Vibrate on long press
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(50)
+            }
             // Send fortune to widget
             showWidgetConfirmDialog(text)
             true
