@@ -6,6 +6,8 @@ import android.content.SharedPreferences
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -243,16 +245,59 @@ class FortuneStyleActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply { marginEnd = 16 }
         }
         previewRow.addView(colorPreview)
-        val hexLabel = TextView(this).apply { text = String.format("#%06X", 0xFFFFFF and initialColor); textSize = 13f; setTextColor(Color.parseColor("#aaaaaa")) }
-        previewRow.addView(hexLabel)
+        val hexInput = EditText(this).apply {
+            setText(String.format("#%06X", 0xFFFFFF and initialColor))
+            textSize = 13f
+            setTextColor(Color.parseColor("#eeeeee"))
+            setBackgroundColor(Color.parseColor("#333333"))
+            setPadding(16, 8, 16, 8)
+            isSingleLine = true
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        previewRow.addView(hexInput)
         container.addView(previewRow)
 
+        var updatingFromSlider = false
+        var updatingFromHex = false
+
+        // Sliders reference list for updating from hex input
+        val sliders = mutableListOf<SeekBar>()
+
         fun refresh() {
+            updatingFromSlider = true
             val color = Color.HSVToColor(hsv)
             colorPreview.background = GradientDrawable().apply { setColor(color); cornerRadius = 8f; setStroke(2, Color.parseColor("#666666")) }
-            hexLabel.text = String.format("#%06X", 0xFFFFFF and color)
+            if (!updatingFromHex) {
+                hexInput.setText(String.format("#%06X", 0xFFFFFF and color))
+            }
             onChange(color)
+            updatingFromSlider = false
         }
+
+        hexInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (updatingFromSlider) return
+                val text = s?.toString()?.trim() ?: return
+                val hex = if (text.startsWith("#")) text else "#$text"
+                if (hex.length != 7) return
+                try {
+                    val color = Color.parseColor(hex)
+                    updatingFromHex = true
+                    Color.colorToHSV(color, hsv)
+                    // Update sliders
+                    if (sliders.size == 3) {
+                        sliders[0].progress = hsv[0].toInt()
+                        sliders[1].progress = (hsv[1] * 100).toInt()
+                        sliders[2].progress = (hsv[2] * 100).toInt()
+                    }
+                    colorPreview.background = GradientDrawable().apply { setColor(color); cornerRadius = 8f; setStroke(2, Color.parseColor("#666666")) }
+                    onChange(color)
+                    updatingFromHex = false
+                } catch (_: Exception) {}
+            }
+        })
 
         fun makeSlider(name: String, max: Int, initial: Int, color: Int, onVal: (Int) -> Unit): LinearLayout {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 8, 0, 0) }
@@ -264,6 +309,7 @@ class FortuneStyleActivity : AppCompatActivity() {
                 override fun onStopTrackingTouch(s: SeekBar?) {}
             })
             row.addView(sb)
+            sliders.add(sb)
             return row
         }
 

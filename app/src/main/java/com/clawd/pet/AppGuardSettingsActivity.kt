@@ -25,11 +25,20 @@ class AppGuardSettingsActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(AppGuardService.PREFS_NAME, MODE_PRIVATE)
         guardedPackages = (prefs.getStringSet(AppGuardService.KEY_PACKAGES, emptySet()) ?: emptySet()).toMutableSet()
 
-        val root = ScrollView(this)
+        // Use a vertical LinearLayout as outer container: ScrollView on top, fixed button at bottom
+        val outerLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#1a1a1a"))
+        }
+
+        val root = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        }
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
-            setBackgroundColor(Color.parseColor("#1a1a1a"))
         }
 
         // Title
@@ -55,21 +64,31 @@ class AppGuardSettingsActivity : AppCompatActivity() {
             })
         }
 
-        // Toggle service
-        val isEnabled = prefs.getBoolean(AppGuardService.KEY_ENABLED, false)
-        toggleButton = makeButton(if (isEnabled) "守护中 ✓（点击关闭）" else "点击开启守护").apply {
-            setOnClickListener { toggleService() }
+        // App list header + refresh button
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 24, 0, 12)
         }
-        layout.addView(toggleButton)
-
-        // App list
-        layout.addView(TextView(this).apply {
+        headerRow.addView(TextView(this).apply {
             text = "── 选择监控的App ──"
             textSize = 14f
             setTextColor(Color.parseColor("#888888"))
-            setPadding(0, 24, 0, 12)
             gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+        headerRow.addView(Button(this).apply {
+            text = "刷新"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#555555"))
+                cornerRadius = 16f
+            }
+            setPadding(24, 8, 24, 8)
+            setOnClickListener { populateAppList() }
+        })
+        layout.addView(headerRow)
 
         listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         layout.addView(listContainer)
@@ -104,11 +123,32 @@ class AppGuardSettingsActivity : AppCompatActivity() {
             }
         }
 
-        // Back
+        // Back button inside scroll
         layout.addView(makeButton("返回") { finish() })
 
         root.addView(layout)
-        setContentView(root)
+        outerLayout.addView(root)
+
+        // Fixed toggle button at bottom (always visible, no need to scroll up)
+        val isEnabled = prefs.getBoolean(AppGuardService.KEY_ENABLED, false)
+        toggleButton = Button(this).apply {
+            text = if (isEnabled) "守护中 ✓（点击关闭）" else "开启守护"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(if (isEnabled) Color.parseColor("#4CAF50") else Color.parseColor("#FF9800"))
+                cornerRadius = 0f
+            }
+            setPadding(0, 32, 0, 32)
+            setOnClickListener { toggleService() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        outerLayout.addView(toggleButton)
+
+        setContentView(outerLayout)
     }
 
     private fun populateAppList() {
@@ -162,7 +202,11 @@ class AppGuardSettingsActivity : AppCompatActivity() {
             // Stop
             stopService(Intent(this, AppGuardService::class.java))
             prefs.edit().putBoolean(AppGuardService.KEY_ENABLED, false).apply()
-            toggleButton.text = "点击开启守护"
+            toggleButton.text = "开启守护"
+            toggleButton.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#FF9800"))
+                cornerRadius = 0f
+            }
         } else {
             // Check permission first
             if (!hasUsageAccess()) {
@@ -175,6 +219,10 @@ class AppGuardSettingsActivity : AppCompatActivity() {
             startForegroundService(serviceIntent)
             prefs.edit().putBoolean(AppGuardService.KEY_ENABLED, true).apply()
             toggleButton.text = "守护中 ✓（点击关闭）"
+            toggleButton.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#4CAF50"))
+                cornerRadius = 0f
+            }
         }
     }
 
