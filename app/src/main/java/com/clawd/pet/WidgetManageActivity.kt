@@ -1,7 +1,7 @@
 package com.clawd.pet
-
 import android.content.ComponentName
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import android.widget.*
 import android.view.Gravity
@@ -10,6 +10,15 @@ import android.graphics.drawable.GradientDrawable
 import androidx.appcompat.app.AppCompatActivity
 
 class WidgetManageActivity : AppCompatActivity() {
+    private fun isDarkMode(): Boolean {
+        return (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+    private fun bgColor(): Int = if (isDarkMode()) 0xFF1a1a1a.toInt() else 0xFFf5f5f5.toInt()
+    private fun textColor(): Int = if (isDarkMode()) 0xFFe0e0e0.toInt() else 0xFF2d2d2d.toInt()
+    private fun secondaryColor(): Int = if (isDarkMode()) 0xFFa0a0a0.toInt() else 0xFF505050.toInt()
+    private fun hintColor(): Int = if (isDarkMode()) 0xFF888888.toInt() else 0xFF909090.toInt()
+    private fun cardColor(): Int = if (isDarkMode()) 0xFF333333.toInt() else 0xFFe0e0e0.toInt()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildUI()
@@ -24,7 +33,7 @@ class WidgetManageActivity : AppCompatActivity() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
-            setBackgroundColor(Color.parseColor("#1a1a1a"))
+            setBackgroundColor(bgColor())
         }
         val hasWidget = hasWidgetOnScreen()
 
@@ -32,15 +41,14 @@ class WidgetManageActivity : AppCompatActivity() {
         layout.addView(TextView(this).apply {
             text = "🏠 桌面组件管理"
             textSize = 20f
-            setTextColor(Color.WHITE)
+            setTextColor(textColor())
             setPadding(0, 0, 0, 32)
         })
-
         // Status
         layout.addView(TextView(this).apply {
             text = if (hasWidget) "状态：组件已在桌面" else "状态：桌面无组件"
             textSize = 14f
-            setTextColor(Color.parseColor("#aaaaaa"))
+            setTextColor(secondaryColor())
             setPadding(0, 0, 0, 24)
         })
 
@@ -56,7 +64,7 @@ class WidgetManageActivity : AppCompatActivity() {
             layout.addView(TextView(this).apply {
                 text = "── 切换签文 ──"
                 textSize = 14f
-                setTextColor(Color.parseColor("#888888"))
+                setTextColor(hintColor())
                 setPadding(0, 24, 0, 12)
                 gravity = Gravity.CENTER
             })
@@ -65,7 +73,7 @@ class WidgetManageActivity : AppCompatActivity() {
                 layout.addView(TextView(this).apply {
                     text = "今天还没有抽过签"
                     textSize = 13f
-                    setTextColor(Color.parseColor("#666666"))
+                    setTextColor(hintColor())
                     setPadding(0, 0, 0, 16)
                 })
             } else {
@@ -82,7 +90,7 @@ class WidgetManageActivity : AppCompatActivity() {
             layout.addView(TextView(this).apply {
                 text = "── 切换背景 ──"
                 textSize = 14f
-                setTextColor(Color.parseColor("#888888"))
+                setTextColor(hintColor())
                 setPadding(0, 24, 0, 12)
                 gravity = Gravity.CENTER
             })
@@ -110,9 +118,9 @@ class WidgetManageActivity : AppCompatActivity() {
         return Button(this).apply {
             this.text = text
             textSize = 14f
-            setTextColor(Color.WHITE)
+            setTextColor(textColor())
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#333333"))
+                setColor(cardColor())
                 cornerRadius = 20f
             }
             val params = LinearLayout.LayoutParams(

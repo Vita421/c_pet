@@ -37,7 +37,9 @@ class WidgetMenuActivity : AppCompatActivity() {
         // Always show: change fortune + style
         layout.addView(makeButton("换签文") { showFortuneList() })
         layout.addView(makeButton("签文样式") {
-            startActivity(android.content.Intent(this, FortuneStyleActivity::class.java))
+            startActivity(android.content.Intent(this, FortuneStyleActivity::class.java).apply {
+                putExtra(FortuneStyleActivity.EXTRA_FROM_WIDGET, true)
+            })
             finish()
         })
 

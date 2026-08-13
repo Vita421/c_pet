@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -15,10 +16,18 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
 class AppGuardSettingsActivity : AppCompatActivity() {
-
     private lateinit var listContainer: LinearLayout
     private lateinit var toggleButton: Button
     private var guardedPackages = mutableSetOf<String>()
+
+    private fun isDarkMode(): Boolean {
+        return (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+    private fun bgColor(): Int = if (isDarkMode()) 0xFF1a1a1a.toInt() else 0xFFf5f5f5.toInt()
+    private fun textColor(): Int = if (isDarkMode()) 0xFFe0e0e0.toInt() else 0xFF2d2d2d.toInt()
+    private fun secondaryColor(): Int = if (isDarkMode()) 0xFFa0a0a0.toInt() else 0xFF505050.toInt()
+    private fun hintColor(): Int = if (isDarkMode()) 0xFF888888.toInt() else 0xFF909090.toInt()
+    private fun cardColor(): Int = if (isDarkMode()) 0xFF333333.toInt() else 0xFFe0e0e0.toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,7 +37,7 @@ class AppGuardSettingsActivity : AppCompatActivity() {
         // Use a vertical LinearLayout as outer container: ScrollView on top, fixed button at bottom
         val outerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#1a1a1a"))
+            setBackgroundColor(bgColor())
         }
 
         val root = ScrollView(this).apply {
@@ -45,15 +54,14 @@ class AppGuardSettingsActivity : AppCompatActivity() {
         layout.addView(TextView(this).apply {
             text = "专注守护"
             textSize = 20f
-            setTextColor(Color.WHITE)
+            setTextColor(textColor())
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 16)
         })
-
         layout.addView(TextView(this).apply {
             text = "选择需要提醒的App。打开这些App时会弹窗问你是否有意识地打开。"
             textSize = 13f
-            setTextColor(Color.parseColor("#999999"))
+            setTextColor(secondaryColor())
             setPadding(0, 0, 0, 24)
         })
 
@@ -73,16 +81,16 @@ class AppGuardSettingsActivity : AppCompatActivity() {
         headerRow.addView(TextView(this).apply {
             text = "── 选择监控的App ──"
             textSize = 14f
-            setTextColor(Color.parseColor("#888888"))
+            setTextColor(hintColor())
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         headerRow.addView(Button(this).apply {
             text = "刷新"
             textSize = 12f
-            setTextColor(Color.WHITE)
+            setTextColor(textColor())
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#555555"))
+                setColor(cardColor())
                 cornerRadius = 16f
             }
             setPadding(24, 8, 24, 8)
@@ -98,11 +106,10 @@ class AppGuardSettingsActivity : AppCompatActivity() {
         layout.addView(TextView(this).apply {
             text = "── 最近记录 ──"
             textSize = 14f
-            setTextColor(Color.parseColor("#888888"))
+            setTextColor(hintColor())
             setPadding(0, 24, 0, 12)
             gravity = Gravity.CENTER
         })
-
         val logPrefs = getSharedPreferences("app_guard_log", MODE_PRIVATE)
         val log = logPrefs.getString("log", "") ?: ""
         val lines = log.split("\n").filter { it.isNotBlank() }.take(10)
@@ -110,14 +117,14 @@ class AppGuardSettingsActivity : AppCompatActivity() {
             layout.addView(TextView(this).apply {
                 text = "暂无记录"
                 textSize = 13f
-                setTextColor(Color.parseColor("#666666"))
+                setTextColor(hintColor())
             })
         } else {
             for (line in lines) {
                 layout.addView(TextView(this).apply {
                     text = line
                     textSize = 12f
-                    setTextColor(Color.parseColor("#aaaaaa"))
+                    setTextColor(secondaryColor())
                     setPadding(0, 4, 0, 4)
                 })
             }
@@ -182,7 +189,7 @@ class AppGuardSettingsActivity : AppCompatActivity() {
             row.addView(TextView(this).apply {
                 text = "$name\n$pkg"
                 textSize = 13f
-                setTextColor(Color.parseColor("#dddddd"))
+                setTextColor(textColor())
                 setPadding(12, 0, 0, 0)
             })
 
@@ -238,9 +245,9 @@ class AppGuardSettingsActivity : AppCompatActivity() {
         return Button(this).apply {
             this.text = text
             textSize = 14f
-            setTextColor(Color.WHITE)
+            setTextColor(textColor())
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#333333"))
+                setColor(cardColor())
                 cornerRadius = 20f
             }
             val params = LinearLayout.LayoutParams(

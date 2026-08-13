@@ -3,6 +3,7 @@ package com.clawd.pet
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -15,13 +16,13 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
 class FortuneStyleActivity : AppCompatActivity() {
-
     companion object {
         const val PREFS_NAME = "fortune_style"
         const val KEY_BG_COLOR = "bg_color"
         const val KEY_TEXT_COLOR = "text_color"
         const val KEY_BG_ALPHA = "bg_alpha"
         const val KEY_ROUNDED = "rounded_corners"
+        const val EXTRA_FROM_WIDGET = "from_widget"
 
         fun getBgColor(context: Context): Int {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -47,14 +48,24 @@ class FortuneStyleActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var previewText: TextView
     private lateinit var previewContainer: View
+    private lateinit var saveButton: Button
 
     private var bgColor = Color.parseColor("#f5f5f5")
     private var textColor = Color.parseColor("#2d2d2d")
     private var bgAlpha = 255
     private var rounded = true
+    private var fromWidget = false
+
+    private fun isDarkMode(): Boolean {
+        return (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+    private fun pageBgColor(): Int = if (isDarkMode()) 0xFF1a1a1a.toInt() else 0xFFf5f5f5.toInt()
+    private fun pageTextColor(): Int = if (isDarkMode()) 0xFFe0e0e0.toInt() else 0xFF2d2d2d.toInt()
+    private fun labelColor(): Int = if (isDarkMode()) 0xFFcccccc.toInt() else 0xFF505050.toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        fromWidget = intent.getBooleanExtra(EXTRA_FROM_WIDGET, false)
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         bgColor = prefs.getInt(KEY_BG_COLOR, bgColor)
         textColor = prefs.getInt(KEY_TEXT_COLOR, textColor)
@@ -65,14 +76,14 @@ class FortuneStyleActivity : AppCompatActivity() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
-            setBackgroundColor(Color.parseColor("#1a1a1a"))
+            setBackgroundColor(pageBgColor())
         }
 
         // Title
         layout.addView(TextView(this).apply {
             text = "签文样式"
             textSize = 20f
-            setTextColor(Color.WHITE)
+            setTextColor(pageTextColor())
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 32)
         })
@@ -129,7 +140,7 @@ class FortuneStyleActivity : AppCompatActivity() {
         val cornerToggle = Switch(this).apply {
             text = if (rounded) "圆角" else "尖角"
             isChecked = rounded
-            setTextColor(Color.WHITE)
+            setTextColor(pageTextColor())
             setOnCheckedChangeListener { _, checked ->
                 rounded = checked
                 this.text = if (rounded) "圆角" else "尖角"
@@ -155,7 +166,7 @@ class FortuneStyleActivity : AppCompatActivity() {
             presetRow.addView(Button(this).apply {
                 text = name
                 textSize = 12f
-                setTextColor(Color.WHITE)
+                setTextColor(pageTextColor())
                 background = GradientDrawable().apply {
                     setColor(Color.parseColor(colors.first))
                     cornerRadius = 16f
@@ -175,7 +186,7 @@ class FortuneStyleActivity : AppCompatActivity() {
         layout.addView(presetRow, marginParams(0, 0, 0, 32))
 
         // === Save Button ===
-        layout.addView(Button(this).apply {
+        saveButton = Button(this).apply {
             text = "保存"
             textSize = 16f
             setTextColor(Color.WHITE)
@@ -183,8 +194,9 @@ class FortuneStyleActivity : AppCompatActivity() {
                 setColor(Color.parseColor("#4CAF50"))
                 cornerRadius = 24f
             }
-            setOnClickListener { saveAndFinish() }
-        })
+            setOnClickListener { saveStyle() }
+        }
+        layout.addView(saveButton)
 
         root.addView(layout)
         setContentView(root)
@@ -200,7 +212,7 @@ class FortuneStyleActivity : AppCompatActivity() {
         previewText.setTextColor(textColor)
     }
 
-    private fun saveAndFinish() {
+    private fun saveStyle() {
         prefs.edit()
             .putInt(KEY_BG_COLOR, bgColor)
             .putInt(KEY_TEXT_COLOR, textColor)
@@ -209,21 +221,30 @@ class FortuneStyleActivity : AppCompatActivity() {
             .apply()
         // Notify widget to update
         ClawdWidgetProvider.notifyWidgetUpdate(this)
-        Toast.makeText(this, "样式已保存", Toast.LENGTH_SHORT).show()
-        // Go back to home screen instead of app
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        if (fromWidget) {
+            // From widget: save and go back to home screen
+            Toast.makeText(this, "样式已保存", Toast.LENGTH_SHORT).show()
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(homeIntent)
+            finish()
+        } else {
+            // From app: stay on page, button shows saved state
+            saveButton.text = "已保存 ✓"
+            saveButton.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#388E3C"))
+                cornerRadius = 24f
+            }
         }
-        startActivity(homeIntent)
-        finish()
     }
 
     private fun makeLabel(text: String): TextView {
         return TextView(this).apply {
             this.text = text
             textSize = 14f
-            setTextColor(Color.parseColor("#cccccc"))
+            setTextColor(labelColor())
             setPadding(0, 16, 0, 8)
         }
     }
