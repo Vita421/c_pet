@@ -110,7 +110,10 @@ class WidgetManageActivity : AppCompatActivity() {
         // Back
         layout.addView(makeButton("返回") { finish() })
 
-        val scroll = ScrollView(this).apply { addView(layout) }
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(bgColor())
+            addView(layout)
+        }
         setContentView(scroll)
     }
 

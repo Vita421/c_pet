@@ -198,6 +198,7 @@ class FortuneStyleActivity : AppCompatActivity() {
         }
         layout.addView(saveButton)
 
+        root.setBackgroundColor(pageBgColor())
         root.addView(layout)
         setContentView(root)
     }

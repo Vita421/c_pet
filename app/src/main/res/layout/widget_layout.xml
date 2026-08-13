@@ -12,9 +12,13 @@
         android:layout_height="match_parent"
         android:gravity="center"
         android:textSize="16sp"
+        android:autoSizeTextType="uniform"
+        android:autoSizeMinTextSize="10sp"
+        android:autoSizeMaxTextSize="16sp"
+        android:autoSizeStepGranularity="1sp"
         android:textColor="#2d2d2d"
         android:text=""
-        android:padding="12dp" />
+        android:padding="8dp" />
 
     <ViewFlipper
         android:id="@+id/widget_animation"
