@@ -312,6 +312,14 @@ class OverlayService : Service(), SensorEventListener {
         windowManager?.addView(overlayView, params)
     }
 
+
+    // === SCREEN SIZE REFRESH (landscape adaptation) ===
+    private fun refreshScreenSize() {
+        val dm = resources.displayMetrics
+        screenWidth = dm.widthPixels
+        screenHeight = dm.heightPixels
+    }
+
     // === BOUNDARY HELPERS ===
     private fun getLeftBoundary(): Int = -(dpToPx(GIF_PAD_LEFT_DP) + dpToPx(WALK_OVERFLOW_DP))
     private fun getRightBoundary(): Int = screenWidth - petSizePx + dpToPx(GIF_PAD_RIGHT_DP) + dpToPx(WALK_OVERFLOW_DP)
@@ -332,6 +340,7 @@ class OverlayService : Service(), SensorEventListener {
     }
 
     private fun startWalking() {
+        refreshScreenSize()
         isWalking = true
         walkDirection = if (Math.random() > 0.5) 1 else -1
         params?.let {
@@ -373,6 +382,7 @@ class OverlayService : Service(), SensorEventListener {
 
     // === PEEK LOGIC ===
     private fun enterPeek(side: Int) {
+        refreshScreenSize()
         isPeeking = true
         peekSide = side
         isWalking = false
@@ -428,6 +438,7 @@ class OverlayService : Service(), SensorEventListener {
 
     private fun enterBounceMode() {
         if (isBouncing) return
+        refreshScreenSize()
         isBouncing = true
         isWalking = false
         handler.removeCallbacksAndMessages(null)
@@ -695,6 +706,7 @@ class OverlayService : Service(), SensorEventListener {
         return View.OnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    refreshScreenSize()
                     handler.removeCallbacksAndMessages(null)
                     isWalking = false
                     isBouncing = false

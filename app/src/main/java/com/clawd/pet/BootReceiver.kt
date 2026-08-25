@@ -12,5 +12,14 @@ class BootReceiver : BroadcastReceiver() {
         if (!Settings.canDrawOverlays(context)) return
         val serviceIntent = Intent(context, OverlayService::class.java)
         context.startForegroundService(serviceIntent)
+
+        // Auto-start AppGuard if it was previously enabled
+        val guardPrefs = context.getSharedPreferences(AppGuardService.PREFS_NAME, Context.MODE_PRIVATE)
+        val guardEnabled = guardPrefs.getBoolean(AppGuardService.KEY_ENABLED, false)
+        val guardPackages = guardPrefs.getStringSet(AppGuardService.KEY_PACKAGES, emptySet()) ?: emptySet()
+        if (guardEnabled && guardPackages.isNotEmpty()) {
+            val guardIntent = Intent(context, AppGuardService::class.java)
+            context.startForegroundService(guardIntent)
+        }
     }
 }

@@ -49,12 +49,10 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             val editor = prefs.edit()
             editor.putString(KEY_FORTUNE_TEXT, text)
             if (text.isEmpty()) {
-                // Mark as explicitly cleared (not "never drawn")
                 editor.putBoolean(KEY_FORTUNE_CLEARED, true)
             } else {
                 editor.putBoolean(KEY_FORTUNE_CLEARED, false)
                 addTodayFortune(context, text)
-                // If Clawd is home, force rotation to show fortune immediately
                 if (prefs.getBoolean(KEY_CLAWD_HOME, false)) {
                     editor.putBoolean(KEY_ROTATION_SHOW_FORTUNE, true)
                 }
@@ -127,17 +125,15 @@ class ClawdWidgetProvider : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         val isHome = isClawdHome(context)
         val fortune = getFortuneText(context)
-        // Set widget shape based on user preference (rounded or sharp)
         val rounded = FortuneStyleActivity.isRounded(context)
         val bgDrawable = if (rounded) R.drawable.widget_bg else R.drawable.widget_bg_sharp
         views.setInt(R.id.widget_root, "setBackgroundResource", bgDrawable)
 
         if (isHome) {
-            // Check rotation flag
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val showFortune = prefs.getBoolean(KEY_ROTATION_SHOW_FORTUNE, false)
             if (showFortune && fortune.isNotEmpty()) {
-                // Rotation: show fortune with custom style
+                // Show fortune text with style
                 val styleBgColor = FortuneStyleActivity.getBgColor(context)
                 val styleTextColor = FortuneStyleActivity.getTextColor(context)
                 val styleBgAlpha = FortuneStyleActivity.getBgAlpha(context)
@@ -153,15 +149,11 @@ class ClawdWidgetProvider : AppWidgetProvider() {
                 views.setTextColor(R.id.widget_fortune_text, styleTextColor)
                 views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(rotBgColor))
             } else {
-                // Show home state
-                views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
-                views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
-                views.setTextViewText(R.id.widget_fortune_text, "\uD83C\uDFE0 Clawd 在家")
-                views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#333333"))
-                views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FFDD44")))
+                // Show home animation
+                views.setViewVisibility(R.id.widget_fortune_text, android.view.View.GONE)
+                views.setViewVisibility(R.id.widget_animation, android.view.View.VISIBLE)
             }
         } else if (fortune.isNotEmpty()) {
-            // Show fortune text with custom style
             val styleBgColor = FortuneStyleActivity.getBgColor(context)
             val styleTextColor = FortuneStyleActivity.getTextColor(context)
             val styleBgAlpha = FortuneStyleActivity.getBgAlpha(context)
@@ -182,11 +174,9 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
             if (cleared) {
-                // Clawd not home, fortune was explicitly cleared → empty "away" background
                 views.setTextViewText(R.id.widget_fortune_text, "")
                 views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#2A2A2A")))
             } else {
-                // Never drawn yet → prompt
                 views.setTextViewText(R.id.widget_fortune_text, "抽一签吧")
                 views.setTextColor(R.id.widget_fortune_text, android.graphics.Color.parseColor("#666666"))
                 views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FFF5D6")))
