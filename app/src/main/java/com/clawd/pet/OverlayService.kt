@@ -83,6 +83,8 @@ class OverlayService : Service(), SensorEventListener {
     private var doorHighlighted = false
 
     companion object {
+        @Volatile
+        private var isRunning = false
         private const val CHANNEL_ID = "clawd_overlay_channel"
         private const val NOTIFICATION_ID = 1001
         private const val PET_SIZE_DP = 80
@@ -122,6 +124,11 @@ class OverlayService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
+        if (isRunning) {
+            stopSelf()
+            return
+        }
+        isRunning = true
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -1043,6 +1050,7 @@ class OverlayService : Service(), SensorEventListener {
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
+        isRunning = false
         handler.removeCallbacksAndMessages(null)
         whisperHandler.removeCallbacksAndMessages(null)
         unregisterSensor()

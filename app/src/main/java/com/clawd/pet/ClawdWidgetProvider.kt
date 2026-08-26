@@ -145,13 +145,21 @@ class ClawdWidgetProvider : AppWidgetProvider() {
                 )
                 views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
                 views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+                views.setViewVisibility(R.id.widget_animation_sharp, android.view.View.GONE)
                 views.setTextViewText(R.id.widget_fortune_text, fortune)
                 views.setTextColor(R.id.widget_fortune_text, styleTextColor)
                 views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(rotBgColor))
             } else {
-                // Show home animation
+                // Show home animation - select rounded or sharp based on user preference
                 views.setViewVisibility(R.id.widget_fortune_text, android.view.View.GONE)
-                views.setViewVisibility(R.id.widget_animation, android.view.View.VISIBLE)
+                if (rounded) {
+                    views.setViewVisibility(R.id.widget_animation, android.view.View.VISIBLE)
+                    views.setViewVisibility(R.id.widget_animation_sharp, android.view.View.GONE)
+                } else {
+                    views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+                views.setViewVisibility(R.id.widget_animation_sharp, android.view.View.GONE)
+                    views.setViewVisibility(R.id.widget_animation_sharp, android.view.View.VISIBLE)
+                }
             }
         } else if (fortune.isNotEmpty()) {
             val styleBgColor = FortuneStyleActivity.getBgColor(context)
@@ -165,6 +173,7 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             )
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+                views.setViewVisibility(R.id.widget_animation_sharp, android.view.View.GONE)
             views.setTextViewText(R.id.widget_fortune_text, fortune)
             views.setTextColor(R.id.widget_fortune_text, styleTextColor)
             views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(widgetBgColor))
@@ -173,6 +182,7 @@ class ClawdWidgetProvider : AppWidgetProvider() {
             val cleared = prefs.getBoolean(KEY_FORTUNE_CLEARED, false)
             views.setViewVisibility(R.id.widget_fortune_text, android.view.View.VISIBLE)
             views.setViewVisibility(R.id.widget_animation, android.view.View.GONE)
+                views.setViewVisibility(R.id.widget_animation_sharp, android.view.View.GONE)
             if (cleared) {
                 views.setTextViewText(R.id.widget_fortune_text, "")
                 views.setColorStateList(R.id.widget_root, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#2A2A2A")))
