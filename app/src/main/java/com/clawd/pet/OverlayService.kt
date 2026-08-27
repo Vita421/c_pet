@@ -151,7 +151,7 @@ class OverlayService : Service(), SensorEventListener {
         if (intent?.action == ACTION_RELOAD_DECKS) {
             decks = deckManager.loadDecks()
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun registerSensor() {

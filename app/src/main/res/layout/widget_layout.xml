@@ -5,7 +5,6 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:padding="0dp">
-
     <TextView
         android:id="@+id/widget_fortune_text"
         android:layout_width="match_parent"
@@ -20,6 +19,7 @@
         android:text=""
         android:padding="8dp" />
 
+    <!-- Idle animation - rounded (250ms/frame, 4fps) -->
     <ViewFlipper
         android:id="@+id/widget_animation"
         android:layout_width="match_parent"
@@ -39,6 +39,7 @@
         <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_home_10" />
     </ViewFlipper>
 
+    <!-- Idle animation - sharp -->
     <ViewFlipper
         android:id="@+id/widget_animation_sharp"
         android:layout_width="match_parent"
@@ -57,5 +58,95 @@
         <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_home_09" />
         <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_home_10" />
     </ViewFlipper>
+
+    <!-- Sleep animation - rounded (1000ms/frame, 1fps) -->
+    <ViewFlipper
+        android:id="@+id/widget_sleep"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:flipInterval="1000"
+        android:autoStart="true">
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_sleep_01" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_sleep_02" />
+    </ViewFlipper>
+
+    <!-- Sleep animation - sharp -->
+    <ViewFlipper
+        android:id="@+id/widget_sleep_sharp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:flipInterval="1000"
+        android:autoStart="true">
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_sleep_01" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_sleep_02" />
+    </ViewFlipper>
+
+    <!-- Coffee animation - rounded (250ms/frame, 4fps) -->
+    <ViewFlipper
+        android:id="@+id/widget_coffee"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:flipInterval="250"
+        android:autoStart="true">
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_01" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_02" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_03" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_04" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_05" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_06" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_07" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_08" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_09" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_10" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_11" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_12" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_13" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/widget_coffee_14" />
+    </ViewFlipper>
+
+    <!-- Coffee animation - sharp -->
+    <ViewFlipper
+        android:id="@+id/widget_coffee_sharp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:flipInterval="250"
+        android:autoStart="true">
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_01" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_02" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_03" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_04" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_05" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_06" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_07" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_08" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_09" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_10" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_11" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_12" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_13" />
+        <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" android:src="@drawable/sharp_widget_coffee_14" />
+    </ViewFlipper>
+
+    <!-- Empty home background - rounded -->
+    <ImageView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_empty"
+        android:visibility="gone" />
+
+    <!-- Empty home background - sharp -->
+    <ImageView
+        android:id="@+id/widget_empty_sharp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/sharp_widget_empty"
+        android:visibility="gone" />
 
 </FrameLayout>
