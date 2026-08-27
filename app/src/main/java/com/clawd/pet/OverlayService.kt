@@ -922,7 +922,16 @@ class OverlayService : Service(), SensorEventListener {
                 }
                 val fortune = ClawdWidgetProvider.getFortuneText(this@OverlayService)
                 if (fortune.isEmpty()) {
-                    widgetRotationHandler.postDelayed(this, 10000)
+                    // No fortune: trigger widget update on animation duration schedule
+                    val currentAnim = getSharedPreferences(ClawdWidgetProvider.PREFS_NAME, MODE_PRIVATE)
+                        .getString(ClawdWidgetProvider.KEY_CURRENT_ANIM, "idle") ?: "idle"
+                    val delay = when (currentAnim) {
+                        "coffee" -> 10 * 60 * 1000L  // 10 min
+                        "sleep" -> 30 * 60 * 1000L   // 30 min
+                        else -> 30 * 60 * 1000L      // 30 min (idle)
+                    }
+                    ClawdWidgetProvider.notifyWidgetUpdate(this@OverlayService)
+                    widgetRotationHandler.postDelayed(this, delay)
                     return
                 }
                 // Toggle between home animation and fortune
