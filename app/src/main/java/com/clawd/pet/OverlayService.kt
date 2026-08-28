@@ -84,7 +84,7 @@ class OverlayService : Service(), SensorEventListener {
 
     companion object {
         @Volatile
-        private var isRunning = false
+        private var // Service guard cleared via timestamp expiry
         private const val CHANNEL_ID = "clawd_overlay_channel"
         private const val NOTIFICATION_ID = 1001
         private const val PET_SIZE_DP = 80
@@ -124,12 +124,17 @@ class OverlayService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
-        if (isRunning) {
+        super.onCreate()
+        // Prevent duplicate instances using SharedPreferences timestamp
+        val guardPrefs = getSharedPreferences("clawd_service_guard", MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val lastStart = guardPrefs.getLong("last_start_time", 0)
+        if (now - lastStart < 3000) {
+            // Another instance started within 3 seconds - this is a duplicate
             stopSelf()
             return
         }
-        isRunning = true
-        super.onCreate()
+        guardPrefs.edit().putLong("last_start_time", now).apply()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         val dm = resources.displayMetrics
@@ -151,7 +156,7 @@ class OverlayService : Service(), SensorEventListener {
         if (intent?.action == ACTION_RELOAD_DECKS) {
             decks = deckManager.loadDecks()
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun registerSensor() {
@@ -1059,7 +1064,7 @@ class OverlayService : Service(), SensorEventListener {
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
-        isRunning = false
+        // Service guard cleared via timestamp expiry
         handler.removeCallbacksAndMessages(null)
         whisperHandler.removeCallbacksAndMessages(null)
         unregisterSensor()
